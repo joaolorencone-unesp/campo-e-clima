@@ -17,10 +17,12 @@ try:
 except ModuleNotFoundError:  # CLI invocation: python scripts/collect.py
     from spraying import read_joint_members, mix_joint_hourly, mix_joint_windows2h
 try:
+    from scripts.sources.free_research import collect_climate_era5, collect_previous_runs, compare_export_provisional, collect_openweather_free
     from scripts.sources.official import collect_official
     from scripts.sources.embrapa import load_optional
     from scripts.sources.supplementary import (collect_cptec, collect_openweather, collect_soil_forecast, collect_nasa_power, collect_extended, load_export_provisional)
 except ModuleNotFoundError:
+    from sources.free_research import collect_climate_era5, collect_previous_runs, compare_export_provisional, collect_openweather_free
     from sources.official import collect_official
     from sources.embrapa import load_optional
     from sources.supplementary import (collect_cptec, collect_openweather, collect_soil_forecast, collect_nasa_power, collect_extended, load_export_provisional)
@@ -385,16 +387,34 @@ def main():
     else:
         slow_sources={
           'nasa_power':collect_nasa_power(enabled=os.environ.get('NASA_POWER_ENABLE')=='1'),
-          'ecmwf_extended':collect_extended(enabled=os.environ.get('ECMWF_EXTENDED_ENABLE')=='1')}
-        if os.environ.get('NASA_POWER_ENABLE')=='1' or os.environ.get('ECMWF_EXTENDED_ENABLE')=='1':
-            slow_cache.parent.mkdir(parents=True,exist_ok=True)
-            slow_cache.write_text(json.dumps({'cache_day':slow_day,'sources':slow_sources},ensure_ascii=False),encoding='utf-8')
+          'ecmwf_extended':collect_extended(enabled=os.environ.get('ECMWF_EXTENDED_ENABLE')=='1'),
+          'previous_runs':collect_previous_runs(enabled=True)}
+        slow_cache.parent.mkdir(parents=True,exist_ok=True)
+        slow_cache.write_text(json.dumps({'cache_day':slow_day,'sources':slow_sources},ensure_ascii=False),encoding='utf-8')
+    # Thirty-year ERA5-Land baseline refreshes once per local month, separately
+    # from the daily supplementary-product cache.
+    climate_cache=pathlib.Path('site/data/climate_cache.json')
+    climate_month=slow_day[:7]
+    climate=None
+    if climate_cache.is_file():
+        try:
+            old=json.loads(climate_cache.read_text(encoding='utf-8'))
+            if old.get('cache_month')==climate_month: climate=old.get('data')
+        except (ValueError,OSError):pass
+    if climate is None:
+        climate=collect_climate_era5(enabled=True)
+        climate_cache.parent.mkdir(parents=True,exist_ok=True)
+        climate_cache.write_text(json.dumps({'cache_month':climate_month,'data':climate},ensure_ascii=False),encoding='utf-8')
+    result['historical_comparison'] = compare_export_provisional(
+        slow_sources.get('previous_runs',{}),result['embrapa_observations'])
     result['complementary'] = {
        'cptec': collect_cptec(),
-       'openweather': collect_openweather(),
+       'openweather': collect_openweather_free(),
        'soil_forecast': collect_soil_forecast(),
        'nasa_power': slow_sources.get('nasa_power',{'state':'requires_setup'}),
        'ecmwf_extended': slow_sources.get('ecmwf_extended',{'state':'requires_setup'}),
+       'previous_runs':slow_sources.get('previous_runs',{'state':'unavailable'}),
+       'era5_climatology':climate,
        'goes_satellite': {'state':'requires_setup','source':'CPTEC/INPE DSAT GOES-19',
           'source_url':'https://www.cptec.inpe.br/dsat/',
           'note':'Visualizador oficial disponível. Integração de tiles e imagem automática exige validar licença, camada, atualização e cobertura; sem imagem sem timestamp.'},

@@ -1,86 +1,94 @@
-# Campo & Clima 🌦️🌱
+# Campo & Clima 🌦️🌱 — versão 0.7 (somente fontes gratuitas)
 
-**Painel agrometeorológico experimental para Naviraí–MS**, com prioridade para previsão de **chuva**, **vento/rajadas**, **pulverização com drones** e planejamento da entrada de máquinas. Projeto de código aberto em desenvolvimento; **as frequências de membros dos ensembles não são probabilidades calibradas**.
+Painel agrometeorológico **experimental e aberto** para Naviraí–MS, com prioridade para **chuva, vento e rajadas, pulverização com drones e condições dos talhões**. Coordenadas de referência: **-23.065, -54.190**; fuso **America/Campo_Grande (UTC−4)**.
 
-- 🌐 **Site publicado:** https://joaolorencone-unesp.github.io/campo-e-clima/
-- 🧭 Coordenadas: **-23.065, -54.190**; horário: **America/Campo_Grande (UTC−4)**.
-- 🔗 [GitHub](https://github.com/joaolorencone-unesp/campo-e-clima) · [Documentação das integrações](docs/INTEGRACOES_V06.md) · [Guia de atualização](ATUALIZAR_GITHUB_v06.md) · [Auditoria Embrapa](docs/AUDITORIA_EMBRAPA_20261026.md)
+**Site público atual:** https://joaolorencone-unesp.github.io/campo-e-clima/  
+**Código e histórico:** https://github.com/joaolorencone-unesp/campo-e-clima
 
-> **Versão: 0.6 (26/10/2026)** — os 35 testes de unidade/integridade passaram offline. A execução real dos conectores novos deve ser verificada após publicar no GitHub Actions. Ter código implementado ≠ serviço confirmado funcionando na produção.
+> **Não utilizamos APIs pagas.** OpenWeather **One Call foi desabilitada**; somente a API **gratuita 5 dias/3h** poderá ser consultada **opcionalmente**, se o usuário criar uma **nova** chave Free e salvá-la em GitHub Secret (sem cartão/assinatura). Nenhuma credencial da NASA/Google/OpenWeather enviada por chat está incluída nos scripts ou ZIPs. **Revogue as credenciais expostas anteriormente.**
 
-## O que funciona / o que está sendo testado
+## O que a versão 0.7 integra
 
-| Recurso | Estado |
-|---|---|
-| Open-Meteo Forecast e 8 ensembles com chuva e vento D0–D6 | ✅ Já validado em GitHub Actions na versão anterior |
-| Comparação de modelos, quantis, excedências, janelas de chuva 1/3/6h | ✅ Já implementado, não calibrado |
-| Triagem conjunta de pulverização meteorológica por membro e janelas de 2h | ✅ Implementado como **triagem**, nunca autorização |
-| INMET: avisos filtrados por IBGE 5005707 e catálogo de estações | ✅ Conector da v0.5, validar resposta real após execução |
-| Embrapa: exportação HTML `.xls` com 700 registros | ✅ 694 dias convertidos **provisoriamente**, 6 em quarentena; falta confirmar a estação selecionada |
-| CPTEC/INPE: previsão independente D0–D6 em XML | 🧪 Novo conector; verificar rede/HTTPS, município e atualização |
-| OpenWeather One Call 3.0 | 🔑 Novo conector; necessita chave e plano compatível |
-| Open-Meteo: umidade do solo em grade | 🧪 Novo conector; pode não haver cobertura da variável selecionada |
-| NASA POWER: chuva histórica estimada em grade | 🧪 Novo conector; cache diário |
-| ECMWF EC46/SEAS5: cenários semanais D14–D55 | 🧪 Novo conector; cache diário, baixa resolução e incerteza |
-| GOES-19 DSAT, GPM/IMERG, radar/raios, SoilGrids | 📖 Links oficiais e estado documentados; processamento geográfico/credenciais pendentes |
-| Métricas reais de acurácia versus observação local | ⏳ **Ainda não disponíveis**; requer identificar estação e armazenar emissões anteriores |
+| Fonte | Dados | Estado metodológico |
+|---|---|---|
+| Open-Meteo Forecast | Previsões horárias/determinísticas de até 14 dias | Já validada nas versões anteriores |
+| Open-Meteo Ensemble — 8 modelos | Chuva e rajadas por membro, cenários conjuntos de pulverização | Frequências brutas **não calibradas**; disponibilidade variável |
+| INMET | Avisos com município IBGE 5005707, cadastro de estações, tentativa de observações diárias | Conector operacional: conferir estado e atualização em cada coleta |
+| Embrapa Guia Clima | 694 registros históricos da exportação fornecida, dezembro/2024 a outubro/2026 | **Provisório**: arquivo não identifica inequivocamente a estação 6 |
+| CPTEC/INPE | Previsão qualitativa sete dias, quando a resposta XML é válida | Referência independente, **não adicionada** aos ensembles |
+| NASA POWER | Estimativa histórica em grade de precipitação | Atualização/cache diário; **não é pluviômetro** |
+| ECMWF EC46/SEAS5 via Open-Meteo | Tendências semanais 15–60 dias, se disponíveis | Resolução ~36 km e incerteza elevada |
+| Open-Meteo Forecast Solo | Umidade superficial e ET0 em grade, quando válidas | Não é sensor de talhão nem indicador de trafegabilidade calibrado |
+| **Open-Meteo ERA5-Land (novo)** | **Climatologia mensal de chuva 1991–2020** | Reanálise em grade; **não** é clima medido na Embrapa |
+| **Open-Meteo Previous Runs (novo)** | **Previsões antigas com antecedência horária fixa 1d/3d** | Verificação exploratória, **não** reproduz as 8 ensembles |
+| NOAA GOES-19 (novo link) | Visualização gratuita do setor sul da América do Sul | Apenas link oficial com data do próprio produto, **não** leitura automática/radar municipal |
+| OpenWeather Free 5d/3h | Comparação externa com intervalos de 3 horas | **Opcional**, nova chave Free em `OPENWEATHER_FREE_API_KEY`, sem One Call e sem pagamento |
 
-## Estrutura do projeto
+**Ainda não operacionais:** NASA GPM/IMERG geoespacial autenticado; SoilGrids WCS/Earth Engine; processamento automático de radar/raios; armazenamento histórico permanente e calibração estatística local. São integrações gratuitas possíveis em etapas futuras, mas necessitam código, testes e/ou autorização — não devem ser simuladas como dados atuais.
+
+## Ciência e cuidados de interpretação
+
+- Mistura de oito ensembles com pesos totais iguais por modelo válido; **dependências institucionais** ECMWF IFS/AIFS e NOAA GEFS/AI-GEFS não desaparecem com a ponderação.
+- Quantis P10/P50/P90 e frequências de chuva devem usar valores de membros válidos, sem imputar ausências como zero. Rajadas em janela = **máximo**, nunca soma.
+- Triagem conjunta de pulverização usa as mesmas variáveis do mesmo membro. **Não aprova defensivos**: bula, inversão, vento na altura de voo, polinizadores, deriva, equipamentos e medições locais são obrigatórios.
+- O diagnóstico de previsões antigas compara dias de validade alinhados, mas a série da Embrapa permanece **sem identificação confirmada**. Nenhum índice MAE/Brier/CRPS é anunciado como acurácia científica.
+- ERA5-Land e NASA POWER são **produtos modelados em grade**, não substitutos de medição de pluviômetro e não fontes independentes para aferir acurácia.
+- A API Previous Runs entrega previsões em horas com antecedência fixa de 24h/72h; o total diário é a soma de 24 horas dessas séries, **não** uma única rodada de previsão emitida às 7h.
+- Horizonte 30–60 dias é **tendência semanal**, não previsão operacional diária.
+
+## Estrutura de código
 
 ```text
-.github/workflows/pages.yml         Atualização e publicação com cache diário para produtos lentos
-scripts/collect.py                 Meteorologia Open-Meteo e orquestração de fontes
-scripts/spraying.py                Triagem por membro e cenários de pulverização
-scripts/verify.py                  Funções de validação de previsão
-scripts/sources/official.py        INMET e catálogo de estações
-scripts/sources/embrapa.py         Importação normalizada estrita para estação confirmada
-scripts/sources/embrapa_export.py  Leitura/auditoria do .xls HTML recebido
-scripts/sources/supplementary.py   CPTEC, OpenWeather, NASA POWER, EC46, solo
-site/index.html                    Site e abas
-site/static/app.js                 Gráficos e navegação
-site/static/styles.css             Tema claro e layout responsivo
-data/observacoes/embrapa_exportacao_provisoria.csv  694 dias SEM estação confirmada
-site/data/latest.json              Saída GERADA pelo GitHub Actions (não versionada)
-site/data/slow_sources_cache.json  Cache temporário por dia (não versionado)
-tests/                             Testes offline; dados fictícios só nos testes
+.github/workflows/pages.yml       GitHub Actions: publicação a cada ~30min (sem garantia de pontualidade)
+scripts/collect.py                Orquestração do dado público
+scripts/spraying.py              Triagem conjunta dos membros e janelas >=2h
+scripts/sources/official.py      INMET: avisos, estações e observação próxima
+scripts/sources/supplementary.py CPTEC, NASA POWER, EC46/SEAS5, solo modelado
+scripts/sources/free_research.py  NOVO: ERA5-Land, Previous Runs, comparação provisória e OpenWeather **Free**
+scripts/sources/embrapa_export.py Auditoria da exportação HTML/.xls
+data/observacoes/                Série provisória recebida do usuário
+site/index.html                  Site e abas
+site/static/app.js               Gráficos e filtros
+site/data/                      JSONs gerados no workflow, NÃO versionados
+  latest.json                   Edição corrente
+  slow_sources_cache.json       Cache diário de produtos mais lentos
+  climate_cache.json            Cache mensal de referência climatológica
+tests/                           Testes sem chamadas externas
 ```
 
-## Instalação local
+## Implantação no GitHub
 
-Python >=3.11:
+Veja **[ATUALIZAR_GITHUB_v07.md](ATUALIZAR_GITHUB_v07.md)**. Com o GitHub Desktop, copiar o conteúdo do ZIP **somente atualização** na pasta clonada, substituir arquivos, fazer commit e push. Verificar **Actions** → execução verde e, no site, status real de cada fonte. A publicação pública **não é feita automaticamente por este chat**, pois a integração GitHub disponível não autorizou gravações.
+
+## Reproduzir localmente
 
 ```bash
 python -m pip install -r requirements.txt
 python -m pytest -q
+node --check site/static/app.js
 python scripts/collect.py
 python -m http.server 8000 --directory site
 ```
 
-Abra `http://localhost:8000`. A aquisição depende de internet e da disponibilidade das APIs. Falhas não são substituídas por valores antigos rotulados como atuais.
+`collect.py` precisa de internet. Sem APIs respondendo, o script indica indisponibilidade e não deve publicar valores antigos como recentes.
 
-## Implantar via GitHub Desktop
+## Custos, proteção e licenças
 
-Leia [ATUALIZAR_GITHUB_v06.md](ATUALIZAR_GITHUB_v06.md). Para atualizar basta copiar o ZIP para a pasta clonada e fazer `Commit to main` + `Push origin`. O workflow já publica o GitHub Pages e tenta coleta a cada ~30min (sem garantia de horário exato).
+As chamadas programadas utilizam **somente serviços gratuitos**, sem One Call ou planos por uso. A [Open-Meteo Free API](https://open-meteo.com/en/terms) permite acesso sem chave com limites de tráfego e atribuição CC BY 4.0, mas **não concede licença para atividade comercial**. NASA POWER, CPTEC/INPE e INMET possuem seus próprios termos. GitHub Pages/Actions também estão sujeitos a políticas e cotas da conta. Não informar chaves, tokens ou senhas por chat e não adicionar credenciais ao repositório. O token NASA Earthdata/Google API compartilhados anteriormente **não são utilizados**.
 
-### Configurar OpenWeather
+## Referências principais
 
-No GitHub: `Settings → Secrets and variables → Actions → New repository secret`; nome **`OPENWEATHER_API_KEY`**. A chave deve oferecer acesso à API **One Call 3.0**. **Nunca publique tokens no repositório, em logs nem no chat.** A ausência desse secret não impede Open-Meteo, CPTEC ou INMET.
+- [Open-Meteo Ensemble](https://open-meteo.com/en/docs/ensemble-api)
+- [Previous Runs](https://open-meteo.com/en/docs/previous-runs-api)
+- [Histórico Archive / ERA5-Land](https://open-meteo.com/en/docs/historical-weather-api)
+- [ECMWF sazonal via Open-Meteo](https://open-meteo.com/en/docs/seasonal-forecast-api)
+- [INMET](https://portal.inmet.gov.br/)
+- [CPTEC/INPE XML](https://servicos.cptec.inpe.br/XML/)
+- [Embrapa Guia Clima](https://www.cpao.embrapa.br/gc/guia-clima?cod_estacao=6)
+- [NOAA GOES-19](https://www.star.nesdis.noaa.gov/goes/sector_band.php?band=13&length=24&sat=G19&sector=ssa)
+- [NASA POWER](https://power.larc.nasa.gov/)
+- [SoilGrids (REST interrompida)](https://docs.isric.org/globaldata/soilgrids/)
 
-### Embrapa: confirmação da estação (pendente)
+### OpenWeather gratuito (opcional, não obrigatório)
 
-O arquivo `.xls` enviado é HTML sem ID da estação. Não é possível provar apenas pelos números que pertence à estação **Naviraí/IFMS (6)**. Foram isolados 6 registros anteriores a 01/12/2024 e incorporados 694 registros diários de 01/12/2024–25/10/2026 como **PROVISÓRIOS**. Confirmar seleção no portal da Embrapa antes de usar esses dados como referência definitiva de verificação. A extração automatizada da Embrapa **não foi implementada como API pública**, pois não identificamos endpoint estável autorizado.
-
-## Metodologia e segurança
-
-- **Chuva:** pesos totais iguais por ensemble como baseline, membros válidos, P10/P50/P90 ponderados; chuva acumulada calculada dentro de cada membro antes da mistura.
-- **Vento/rajadas:** direção meteorológica = **de onde sopra**; rajada de janela é o **máximo**, nunca soma; grade ≠ medição em talhão.
-- **Pulverização:** classe “meteorologicamente candidata” **não significa operação autorizada**. Bula, estabilidade, inversão, gotas, altura, deriva, culturas sensíveis, polinizadores e regras MAPA/ANAC prevalecem.
-- **Máquinas:** umidade do solo do modelo em grade não é índice calibrado de trafegabilidade.
-- **Longo prazo:** tendências EC46/SEAS5 são semanais, não previsão diária de pulverização.
-- **Histórico de acertos:** sem arquivar emissão/membro/validade e sem observação independentemente identificada, NÃO informar porcentagem de acerto.
-
-## Fontes, autoria e termos
-
-[Open-Meteo](https://open-meteo.com/en/docs) · [INMET](https://portal.inmet.gov.br/) · [Embrapa](https://www.cpao.embrapa.br/gc/busca-de-dados) · [CPTEC/INPE](https://servicos.cptec.inpe.br/XML/) · [NASA POWER](https://power.larc.nasa.gov/) · [NASA GPM](https://gpm.nasa.gov/) · [ISRIC](https://docs.isric.org/globaldata/soilgrids/).
-
-Verificar direitos sobre redistribuição das séries exportadas da Embrapa e os termos das APIs, em especial para serviços comerciais e aumento de volume. Não há licença de código explicitamente escolhida nesta versão.
+A API oficial [5-day / 3-hour forecast](https://openweathermap.org/api/forecast5) pertence ao plano Free. **Não use a chave antiga exposta no chat**; primeiro revogue-a e gere outra de plano Free. Salve-a SOMENTE em GitHub → Settings → Secrets and variables → Actions → New repository secret, com o nome exato **`OPENWEATHER_FREE_API_KEY`**. O código usa apenas `https://api.openweathermap.org/data/2.5/forecast`, não a One Call 3/4. Sem novo segredo a integração aparece como opcional e **não há chamada externa**. Mesmo com integração, a previsão externa é apenas comparação textual, não membro extra dos oito ensembles.

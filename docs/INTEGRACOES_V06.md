@@ -48,3 +48,5 @@ Guardar `issued_at`, `valid_at`, membro/modelo, grade, timezone, versão da meto
 
 ## Aviso operacional
 Dados de umidade de solo gridded não autorizam trânsito de máquinas. Classificação meteorológica conjunta de pulverização não autoriza aplicação: bula, equipamento DJI, deriva, inversão, estrutura dos talhões, culturas sensíveis, polinizadores e legislação permanecem mandatórios.
+
+# Versão v0.7: OpenWeather desativado a pedido do usuário, sem assinatura ou uso de chaves. Consulte ATUALIZAR_GITHUB_v07.md.

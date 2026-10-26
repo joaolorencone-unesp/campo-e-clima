@@ -24,6 +24,16 @@ def test_collector_builds_json_from_stubbed_api(tmp_path, monkeypatch):
                    'wind_gusts_10m_member01': [34]*len(times),
                    'wind_gusts_10m_member02': [20]*len(times)},
     }
+    # Stub every external connector, including v0.7 research endpoints: truly offline.
+    monkeypatch.setattr(collector, 'collect_official', lambda: {})
+    monkeypatch.setattr(collector, 'collect_cptec', lambda: {'state':'unavailable'})
+    monkeypatch.setattr(collector, 'collect_soil_forecast', lambda: {'state':'unavailable'})
+    monkeypatch.setattr(collector, 'collect_nasa_power', lambda **kw: {'state':'unavailable'})
+    monkeypatch.setattr(collector, 'collect_extended', lambda **kw: {'state':'unavailable'})
+    monkeypatch.setattr(collector, 'collect_previous_runs', lambda **kw: {'state':'unavailable'})
+    monkeypatch.setattr(collector, 'collect_climate_era5', lambda **kw: {'state':'unavailable'})
+    monkeypatch.setattr(collector, 'collect_openweather_free', lambda: {'state':'optional_free_key'})
+    monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(collector, 'MODELS', {'model_A': 'model_a', 'model_B': 'model_b'})
     monkeypatch.setattr(collector.time, 'sleep', lambda _: None)
     monkeypatch.setattr(collector, 'fetch', lambda url, params: forecast if 'forecast' in url else ensemble)
@@ -37,6 +47,9 @@ def test_collector_builds_json_from_stubbed_api(tmp_path, monkeypatch):
     assert obj['gust_ensemble_daily'][0]['p_gt_30_kmh'] == 0.5
     assert obj['ensemble_models']['model_A']['gust_members'] == 2
     assert obj['issued_at_utc'].endswith('+00:00')
+    assert obj['complementary']['openweather']['state']=='optional_free_key'
+    assert 'previous_runs' in obj['complementary']
+    assert 'era5_climatology' in obj['complementary']
 
 
 def test_collector_rejects_mismatched_timezone(monkeypatch):

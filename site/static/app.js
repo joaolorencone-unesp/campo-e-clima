@@ -350,14 +350,17 @@ function renderOfficial(){
 
 function renderExtras(){
  const c=state?.complementary||{};
- const metas=[['CPTEC/INPE — 7 dias','cptec'],['OpenWeather One Call 3.0','openweather'],
+ const metas=[['CPTEC/INPE — 7 dias','cptec'],['OpenWeather Free • 5 dias / 3h (opcional)','openweather'],
  ['Open-Meteo • solo em grade','soil_forecast'],['NASA POWER (histórico em grade)','nasa_power'],
- ['ECMWF EC46/SEAS5 (tendência)','ecmwf_extended'],['GOES-19 / INPE DSAT','goes_satellite'],
+ ['ECMWF EC46/SEAS5 (tendência)','ecmwf_extended'],
+ ['Climatologia ERA5-Land (1991–2020)','era5_climatology'],['Previous Runs • previsões passadas','previous_runs'],['GOES-19 / INPE DSAT','goes_satellite'],
  ['GPM/IMERG','gpm_imerg'],['ISRIC SoilGrids','soilgrids']];
  tableFill('source-status-table',['Serviço','Estado real da integração','Horário da consulta (UTC)','Informação'],
-  metas.map(([name,key])=>{const o=c[key]||{};const label=({ok:'✓ Dados válidos',unavailable:'Falha de consulta',requires_key:'Requer chave/plano',requires_setup:'Aguardando configuração',requires_registration:'Requer cadastro',service_paused:'Serviço REST pausado'})[o.state]||'Ainda não integrado';
+  metas.map(([name,key])=>{const o=c[key]||{};const label=({ok:'✓ Dados válidos',unavailable:'Falha de consulta',requires_key:'Requer chave/plano',requires_setup:'Aguardando configuração',requires_registration:'Requer cadastro',service_paused:'Serviço REST pausado',disabled_no_cost:'Desativado: sem cobrança',disabled:'Desativado',optional_free_key:'Opcional: chave gratuita' })[o.state]||'Ainda não integrado';
    return `<tr><td>${esc(name)}</td><td class="${o.state==='ok'?'ok':'warn'}">${esc(label)}</td><td>${esc(o.queried_at_utc?.slice(0,19).replace('T',' ')||'—')}</td><td><a target="_blank" rel="noopener" href="${esc(o.source_url||'#')}">Fonte ↗</a> · ${esc((o.error||o.note||'').slice(0,140))}</td></tr>`;
   }));
+ const ow=c.openweather||{};
+ const owMsg=ow.state==='ok'?`OpenWeather gratuito: ${(ow.forecast||[]).length} previsões em blocos de 3h, com chuva e PoP quando fornecidas. Não é novo membro nem dado observado.`:`OpenWeather gratuito opcional: ${ow.note||ow.error||'sem retorno'} (sem custo e sem One Call).`;
  const cp=c.cptec||{};
  $('cptec-preview').innerHTML=cp.state==='ok'
   ? `<strong>CPTEC/INPE — previsão independente</strong> (emissão ${esc(cp.product_updated_date)}) · ${esc(cp.place)}/${esc(cp.uf)}<div class="scroll"><table class="compact"><thead><tr><th>Data</th><th>Condição/código</th><th>Tmin °C</th><th>Tmax °C</th></tr></thead><tbody>${(cp.days||[]).map(d=>`<tr><td>${esc(d.date)}</td><td>${esc(d.weather_code)}</td><td>${fmt(d.tmin_c)}</td><td>${fmt(d.tmax_c)}</td></tr>`).join('')}</tbody></table></div><small>Não fornece mm ou probabilidade calibrada neste produto. Não conta como membro do ensemble.</small>`
@@ -372,8 +375,32 @@ function renderExtras(){
  $('extended-weekly').innerHTML=weeks.length
   ? `<strong>Cenários semanais ECMWF (36 km; não calibrados):</strong><div class="scroll"><table class="compact"><thead><tr><th>Semana</th><th>P10 chuva mm</th><th>P50</th><th>P90</th><th>Membros</th></tr></thead><tbody>${weeks.map(w=>`<tr><td>${esc(w.start)} a ${esc(w.end)}</td><td>${fmt(w.rain_week_p10_mm)}</td><td>${fmt(w.rain_week_p50_mm)}</td><td>${fmt(w.rain_week_p90_mm)}</td><td>${esc(w.member_count)}</td></tr>`).join('')}</tbody></table></div><small>Não é previsão diária para pulverização. Fontes EC46/SEAS5 variam conforme prazo.</small>`
   : 'ECMWF 15–60 dias: '+esc(ext.note||ext.error||'produto ainda não configurado')+' Os primeiros 14 dias acima permanecem determinísticos.';
- $('source-extra-notes').textContent='Status atual por fonte, sem somar modelos correlacionados nem imputar lacunas. NASA POWER é estimativa em grade, não pluviômetro. GOES-19/radar/raios dependem de imagens com atualização e posição confirmadas.';
+ $('source-extra-notes').textContent=owMsg+' Somente fontes gratuitas são consultadas: OpenWeather foi desabilitada para não gerar custo. NASA POWER, ERA5-Land e Previous Runs não são medições de pluviômetros. GOES-19 possui visualização pública externa, sem interpretação automática de imagem local.';
 }
+
+function renderFreeResearch(){
+ const c=state?.complementary||{}, clima=c.era5_climatology||{};
+ const climateStatus=$('climate-era5-status'),climateEl=$('climate-era5-plot');
+ if(clima.state==='ok' && (clima.months||[]).length===12){
+  const months=clima.months;
+  climateStatus.className='notice';climateStatus.textContent=`ERA5-Land 1991–2020 · precipitação média anual estimada: ${fmt(clima.yearly_mean_sum_mm,0)} mm · grade ${fmt(clima.grid_lat,3)}, ${fmt(clima.grid_lon,3)}. Reanálise, não pluviômetro.`;
+  chart('climate-era5-plot',[{type:'bar',x:months.map(x=>x.month_name),y:months.map(x=>x.mean_monthly_rain_mm),name:'Chuva mensal média em grade',marker:{color:'#218ec0'},
+     customdata:months.map(x=>x.years_complete),hovertemplate:'%{x}: %{y:.1f} mm · %{customdata} anos completos<extra></extra>'}],'mm/mês',{height:330});
+ }else{climateStatus.className='notice warning';climateStatus.textContent=`ERA5-Land não disponível nesta edição: ${clima.error||clima.note||'sem resposta'}. Não extrapolamos dados.`;chartSpecs.delete('climate-era5-plot');climateEl.textContent='Sem série climatológica válida.';}
+ const prev=c.previous_runs||{},comp=state?.historical_comparison||{};
+ const previousStatus=$('previous-runs-status'),previousEl=$('previous-runs-plot');
+ if(comp.state==='exploratory' && (comp.paired_days||[]).length){
+  const pairs=comp.paired_days;
+  previousStatus.className='notice warning';previousStatus.textContent=`${comp.days_overlapping} dias com correspondência de datas. Diagnóstico SOMENTE EXPLORATÓRIO: a planilha não identifica a estação; sem índice de acerto ou calibração.`;
+  const x=pairs.map(p=>ddmm(p.date));
+  chart('previous-runs-plot',[
+   {x,y:pairs.map(p=>p.export_mm),type:'bar',name:'Arquivo Embrapa não verificado (mm)',marker:{color:'#4ca7d0'}},
+   {x,y:pairs.map(p=>p.previous_lead1_mm),type:'scatter',mode:'lines',name:'Previsão 1 dia antes (mm)',line:{color:'#e48742',width:2}},
+   {x,y:pairs.map(p=>p.previous_lead3_mm),type:'scatter',mode:'lines',name:'Previsão 3 dias antes (mm)',line:{color:'#345a8c',width:2,dash:'dot'}}
+  ],'mm/dia',{height:330});
+ }else{previousStatus.className='notice muted';previousStatus.textContent=`Comparação ainda indisponível: ${prev.error||comp.note||'sem dias pareados'}. Sem dado não é erro zero.`;chartSpecs.delete('previous-runs-plot');previousEl.textContent='Aguardando previsões históricas comparáveis.';}
+}
+
 function renderCalendar(){
  const base=state?.issued_at_utc?new Date(state.issued_at_utc):new Date();
  const start=localISO(base);
@@ -397,7 +424,7 @@ function render(){
  const d=state?.deterministic;
  const {stale}=statusBar();
  const idx=hoursFrom(d?.hourly,72);
- const guards=[()=>renderOverview(idx),()=>renderRain(idx),()=>renderWind(idx),()=>renderSpray(idx),ensembleScreening,renderMachines,renderVerification,renderOfficial,renderExtras,renderCalendar];
+ const guards=[()=>renderOverview(idx),()=>renderRain(idx),()=>renderWind(idx),()=>renderSpray(idx),ensembleScreening,renderMachines,renderVerification,renderOfficial,renderExtras,renderFreeResearch,renderCalendar];
  for(const f of guards){try{f();}catch(err){console.error('Render failure',err);}}
  redrawActive();
 }
