@@ -16,3 +16,8 @@
 | DJI Agras T100 | limitações e dados de aplicação | análise documental planejada | https://ag.dji.com/t100/downloads |
 
 **Controle de qualidade:** armazenar sempre a fonte, hora da coleta e da rodada, hora de validade, timezone, centro de grade, distância até sede, contagem de membros por variável, retorno de API e eventuais lacunas. INMET/Embrapa são observação local quando sensores e horário forem conferidos; portais de previsão externos não devem ser somados como membros independentes.
+
+
+### Integração incremental v0.5
+
+O código de coleta agora inclui **INMET avisos ativos** (filtrados por IBGE 5005707) e **catálogo de estações** (`apitempo.inmet.gov.br/estacoes/T`), com tentativa de consulta à estação diária operante mais próxima e tratamento explícito para bloqueios. Verificar execução real no Actions antes de declarar a fonte ativa. Embrapa estação 6: **CSV manual auditado**, não uma API automática. Instruções em `docs/INTEGRACAO_BASES.md`.

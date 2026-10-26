@@ -9,3 +9,10 @@
 .badgegood{color:#116849;background:#e3f5ed}.badgeamber{color:#895d1b;background:#fff2d4}.badgebad{color:#9b3a3f;background:#fde7e9}
 .gridsummary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:14px 0}.screen-metric{border:1px solid #dce9ee;border-radius:12px;background:#f9fcfd;padding:15px;display:flex;flex-direction:column}.screen-metric small{font-weight:700;color:#536d7b}.screen-metric strong{font-size:31px;line-height:1.5}.screen-metric span{color:#6c8191;font-size:11px}
 @media(max-width:760px){.gridsummary{grid-template-columns:1fr 1fr 1fr;gap:5px}.screen-metric{padding:8px}.screen-metric strong{font-size:23px}.screen-metric span{font-size:10px}}
+
+/* v0.5 -- official observation and municipality-verified advisory surfaces */
+.official-alerts {display:grid;gap:12px;margin:13px 0}
+.official-alert-card {border:1px solid #edd29d;border-left:5px solid #ba7e26;border-radius:12px;background:#fffaf0;padding:16px}
+.official-alert-card strong{display:block;color:#69460d;font-size:16px}
+.official-alert-card p{margin:7px 0;color:#6c563a}
+.official-alert-card small{display:block;color:#876a47}

@@ -16,6 +16,14 @@ try:
     from scripts.spraying import read_joint_members, mix_joint_hourly, mix_joint_windows2h
 except ModuleNotFoundError:  # CLI invocation: python scripts/collect.py
     from spraying import read_joint_members, mix_joint_hourly, mix_joint_windows2h
+try:
+    from scripts.sources.official import collect_official
+    from scripts.sources.embrapa import load_optional
+    from scripts.sources.supplementary import (collect_cptec, collect_openweather, collect_soil_forecast, collect_nasa_power, collect_extended, load_export_provisional)
+except ModuleNotFoundError:
+    from sources.official import collect_official
+    from sources.embrapa import load_optional
+    from sources.supplementary import (collect_cptec, collect_openweather, collect_soil_forecast, collect_nasa_power, collect_extended, load_export_provisional)
 
 LAT, LON = -23.065, -54.190
 TZ = 'America/Campo_Grande'
@@ -272,7 +280,7 @@ def rain_models_comparison(by_model: dict[str,dict]) -> list[dict]:
 
 def main():
     recorded = dt.datetime.now(dt.timezone.utc).isoformat()
-    result: dict[str, Any] = {'schema_version': 3, 'issued_at_utc': recorded,
+    result: dict[str, Any] = {'schema_version': 4, 'issued_at_utc': recorded,
              'site': {'latitude': LAT, 'longitude': LON, 'timezone': TZ},
              'methodology': 'Equal total weight per valid ensemble model; uncalibrated member frequencies; forward 1/3/6h totals from joint member trajectories; interpolated hourly grids not independent measurements',
              'sources': {}, 'deterministic': None, 'rain_ensemble_daily': [], 'gust_ensemble_daily': [], 'rain_ensemble_hourly': [], 'rain_models_daily': [], 'ensemble_models': {},
@@ -354,6 +362,61 @@ def main():
         result['warnings'].append('No complete member/day precipitation sample; ensemble chart unavailable')
     if not result['gust_ensemble_daily']:
         result['warnings'].append('No complete member/day gust sample; gust exceedance probabilities unavailable')
+
+    # Official observations/alerts are separate products, NOT extra model members.
+    # Errors only affect their own section, never conceal validated ensemble data.
+    result['official'] = collect_official()
+    provisional = pathlib.Path('data/observacoes/embrapa_exportacao_provisoria.csv')
+    result['embrapa_observations'] = load_export_provisional(provisional) if provisional.is_file() else load_optional(pathlib.Path(
+        os.environ.get('EMBRAPA_CSV', 'data/observacoes/embrapa_navirai.csv')))
+    # Independent comparator feeds. None counts as an additional Open-Meteo ensemble member.
+    # Slow-changing products can be cached across half-hourly GitHub Actions runs
+    # using actions/cache keyed by the local calendar day.
+    slow_cache=pathlib.Path('site/data/slow_sources_cache.json')
+    slow_day=dt.datetime.now(dt.timezone(dt.timedelta(hours=-4))).date().isoformat()
+    previous={}
+    if slow_cache.is_file():
+        try:
+            previous=json.loads(slow_cache.read_text(encoding='utf-8'))
+            if previous.get('cache_day')!=slow_day:previous={}
+        except (ValueError,OSError):previous={}
+    if previous:
+        slow_sources=previous.get('sources',{})
+    else:
+        slow_sources={
+          'nasa_power':collect_nasa_power(enabled=os.environ.get('NASA_POWER_ENABLE')=='1'),
+          'ecmwf_extended':collect_extended(enabled=os.environ.get('ECMWF_EXTENDED_ENABLE')=='1')}
+        if os.environ.get('NASA_POWER_ENABLE')=='1' or os.environ.get('ECMWF_EXTENDED_ENABLE')=='1':
+            slow_cache.parent.mkdir(parents=True,exist_ok=True)
+            slow_cache.write_text(json.dumps({'cache_day':slow_day,'sources':slow_sources},ensure_ascii=False),encoding='utf-8')
+    result['complementary'] = {
+       'cptec': collect_cptec(),
+       'openweather': collect_openweather(),
+       'soil_forecast': collect_soil_forecast(),
+       'nasa_power': slow_sources.get('nasa_power',{'state':'requires_setup'}),
+       'ecmwf_extended': slow_sources.get('ecmwf_extended',{'state':'requires_setup'}),
+       'goes_satellite': {'state':'requires_setup','source':'CPTEC/INPE DSAT GOES-19',
+          'source_url':'https://www.cptec.inpe.br/dsat/',
+          'note':'Visualizador oficial disponível. Integração de tiles e imagem automática exige validar licença, camada, atualização e cobertura; sem imagem sem timestamp.'},
+       'gpm_imerg':{'state':'requires_registration','source':'NASA GPM IMERG',
+          'source_url':'https://gpm.nasa.gov/data/imerg',
+          'note':'Acesso operacional a dados de precipitação exige cadastro Earthdata/PPS e tratamento de arquivos GeoTIFF/HDF5; não há leitura numérica nesta versão.'},
+       'soilgrids':{'state':'service_paused','source':'ISRIC SoilGrids',
+          'source_url':'https://docs.isric.org/globaldata/soilgrids/',
+          'note':'API REST suspensa; WCS, Earth Engine e WebDAV são alternativas a implementar para atributos estáticos.'},
+    }
+    for source_name,item in result['complementary'].items():
+        result['sources'][source_name]={'state':item.get('state'),
+            'source_url':item.get('source_url'),
+            'queried_at_utc':item.get('queried_at_utc')}
+
+    for source_name, item in result['official'].items():
+        result['sources'][source_name] = {
+            'state':item['state'], 'source_url':item.get('source_url'),
+            'queried_at_utc':item.get('queried_at_utc')}
+    result['sources']['Embrapa Guia Clima'] = {
+        'state':result['embrapa_observations']['state'],
+        'source_url':result['embrapa_observations'].get('source_url')}
 
     dest = pathlib.Path(os.environ.get('OUTPUT_JSON', 'site/data/latest.json'))
     dest.parent.mkdir(parents=True, exist_ok=True)

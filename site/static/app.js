@@ -66,7 +66,7 @@ function statusBar(){
  $('status').classList.toggle('warning',stale);
  $('status').innerHTML=stale
   ?`⚠️ <strong>Coleta indisponível ou desatualizada.</strong> Última emissão: ${age===null?'não registrada':age+' minutos atrás'}. Os valores antigos, se presentes, não devem orientar operações atuais.`
-  :`✓ <strong>Coleta atualizada há ${age} minuto(s).</strong> ${modelOK} modelos com membros de chuva; ${gustOK} com rajadas. <strong>Frequências ainda não calibradas.</strong> Avisos e observações oficiais não são atualizados neste MVP.`;
+  :`✓ <strong>Coleta atualizada há ${age} minuto(s).</strong> ${modelOK} modelos com membros de chuva; ${gustOK} com rajadas. <strong>Frequências ainda não calibradas.</strong> INMET, CPTEC e observações históricos têm estados de coleta independentes.`;
  return {stale,age,modelOK,gustOK,issued};
 }
 function metric(label,value,unit,desc){return `<article class="metric"><span class="label">${esc(label)}</span><span class="number">${fmt(value)}<span class="unit"> ${esc(unit)}</span></span><span class="hint">${esc(desc)}</span></article>`;}
@@ -286,6 +286,94 @@ function renderMachines(){const daily=dailyData();const items=(daily.time||[]).s
 function renderVerification(){const model=state?.ensemble_models||{};const items=Object.entries(model).sort((a,b)=>a[0].localeCompare(b[0]));
  tableFill('model-inventory',['Modelo','Chuva: membros','Rajadas: membros','Latitude grade','Longitude grade','Disponibilidade'],items.map(([name,item])=>`<tr><td>${esc(name)}</td><td>${item.precipitation_members??'—'}</td><td>${item.gust_members??'—'}</td>${cell(item.grid_lat,'',3)}${cell(item.grid_lon,'',3)}<td class="${item.state==='ok'?'ok':'warn'}">${esc(item.state==='ok'?'Chuva válida':item.state==='error'?'Falha na fonte':'Sem chuva diária completa')}</td></tr>`));
 }
+
+function renderOfficial(){
+ const official=state?.official||{}, alerts=official.inmet_alerts||{}, catalog=official.inmet_stations||{};
+ const strip=$('official-alert-strip'), box=$('inmet-alerts');
+ const checked=alerts.queried_at_utc?new Date(alerts.queried_at_utc).toLocaleString('pt-BR',{timeZone:'America/Campo_Grande',dateStyle:'short',timeStyle:'short'}):'horário indisponível';
+ if(alerts.state!=='ok'){
+  const msg='⚠ Avisos oficiais INMET: consulta indisponível. Não interprete como ausência de alerta.';
+  strip.className='notice warning';strip.textContent=msg;
+  box.innerHTML=`<div class="notice warning">${esc(msg)} <a href="https://alertas2.inmet.gov.br/" target="_blank" rel="noopener">Consultar avisos INMET ↗</a></div>`;
+ } else {
+  const list=alerts.municipal_alerts||[];
+  if(list.length){
+   strip.className='notice warning';strip.textContent=`⚠ ${list.length} aviso(s) INMET retornado(s) com Naviraí (IBGE 5005707) na abrangência municipal. Conferir validade. Consulta: ${checked} (Naviraí).`;
+   box.innerHTML=list.map(a=>`<article class="official-alert-card"><strong>${esc(a.type)} • ${esc(a.severity)}</strong><p>Fonte: ${esc(a.start_date_source)} ${esc(a.start_hour_source||'hora não informada')} até ${esc(a.end_date_source)} ${esc(a.end_hour_source||'hora não informada')} • fuso não confirmado</p><small>Município confirmado pelo código IBGE 5005707. ${esc((a.risks||[]).join(' · ').slice(0,420))}</small></article>`).join('');
+  }else{
+   strip.className='notice';strip.textContent='INMET consultado: nenhum aviso da resposta recebida incluiu explicitamente Naviraí (IBGE 5005707). Isso não descarta outros riscos. Consulta: '+checked+' (Naviraí).';
+   box.innerHTML='<div class="notice">Nenhum aviso com Naviraí identificado na consulta; verifique novamente a fonte oficial em caso de instabilidade.</div>';
+  }
+ }
+ const stations=((catalog.state==='ok'?catalog.nearest:[])||[]).slice(0,8);
+ tableFill('inmet-stations-table',['Estação','Código','Distância km','Situação','Altitude m'],
+  stations.map(x=>`<tr><td>${esc(x.name)}</td><td>${esc(x.station_code)}</td><td>${fmt(x.distance_km)}</td><td>${esc(x.status)}</td><td>${esc(x.altitude_m)}</td></tr>`));
+ if(!stations.length) $('inmet-stations-table').innerHTML='<tr><td>Catálogo INMET indisponível nesta consulta. Sem dados de estação não significa tempo estável.</td></tr>';
+ const stationObs=official.inmet_daily_nearby||{};
+ const obsEl=$('inmet-daily');
+ if(stationObs.state==='ok' && (stationObs.records||[]).length){
+  const rainRec=stationObs.records.filter(x=>x.precipitation_mm!==null);
+  const last=stationObs.records[stationObs.records.length-1];
+  obsEl.textContent=`INMET ${stationObs.station_name} (${stationObs.station_code}; ${fmt(stationObs.distance_km,0)} km da sede): ${stationObs.records.length} dia(s) consultados, ${rainRec.length} com chuva observada. Último registro: ${last.date}. Não é medição de Naviraí.`;
+ } else {
+  obsEl.textContent=`Observações diárias INMET não confirmadas: ${stationObs.error||'sem resposta válida'}; não significa ausência de chuva.`;
+ }
+ const e=state?.embrapa_observations||{}, records=(['ok','provisional'].includes(e.state)?(e.records||[]):[]);
+ const notice=$('embrapa-status');
+ if(!records.length){
+  notice.className='notice muted';notice.textContent=e.state==='invalid'?'CSV da Embrapa reprovado na validação: '+(e.errors||[]).join(' | ').slice(0,190):'Histórico Embrapa Naviraí ainda não integrado. É necessária exportação revisada da estação 6.';
+  $('observed-rain-plot').textContent='Sem observações auditadas. Não corresponde a chuva de 0 mm.';
+  $('embrapa-history-table').innerHTML='<tr><td>Aguardando série observacional validada.</td></tr>';
+ }else{
+  const last=records.slice(-30);
+  notice.className=e.state==='provisional'?'notice warning':'notice';
+  notice.textContent=e.state==='provisional'
+   ? `⚠️ Exportação da Embrapa ainda SEM ID DE ESTAÇÃO confirmado: ${e.record_count} dias (até ${e.date_last}), ${e.excluded_early_records||6} registros anteriores a 01/12/2024 excluídos. Confirmar Naviraí/IFMS antes de avaliar acurácia; são valores preliminares, não dados observados certificados para este local.`
+   : `Estação 6 · ${e.record_count} registros importados, ${e.rain_nonmissing_days} dias com chuva informada. Dados históricos, não tempo real.`;
+  chart('observed-rain-plot',[{type:'bar',x:last.map(r=>ddmm(r.date)),y:last.map(r=>r.precipitation_mm),name:e.state==='provisional'?'Chuva do arquivo exportado • localização não confirmada (mm)':'Chuva observada (mm)',marker:{color:'#168fc2'}}],e.state==='provisional'?'Chuva do arquivo provisório (mm/dia)':'Chuva observada (mm/dia)');
+  tableFill('embrapa-history-table',['Dia','Chuva observada mm','T média °C','UR média %'],last.slice().reverse().map(r=>`<tr><td>${esc(ddmm(r.date))}</td>${cell(r.precipitation_mm)}${cell(r.temperature_mean_c)}${cell(r.relative_humidity_mean_pct)}</tr>`));
+  const monthMap=new Map();
+  for(const rec of records){const mo=rec.date.slice(0,7), m=monthMap.get(mo)||{total:0,days:0};
+    if(num(rec.precipitation_mm)!==null){m.total+=Number(rec.precipitation_mm);m.days++;}
+    monthMap.set(mo,m);}
+  const months=[...monthMap.entries()].slice(-15);
+  chart('embrapa-monthly-plot',[{type:'bar',x:months.map(([m])=>m.slice(5)+'/'+m.slice(2,4)),
+      y:months.map(([,v])=>Number(v.total.toFixed(1))),name:'Acumulado da exportação • mm',marker:{color:'#258ec0'},
+      customdata:months.map(([,v])=>v.days),hovertemplate:'%{x}: %{y:.1f} mm (%{customdata} dias)'}], 'mm/mês',{height:310});
+  const et0last=records.filter(r=>num(r.et0_mm_day)!==null).slice(-45);
+  chart('embrapa-et0-plot',[{type:'scatter',mode:'lines+markers',
+      x:et0last.map(r=>ddmm(r.date)),y:et0last.map(r=>r.et0_mm_day),
+      name:'ET₀ • mm/dia',line:{color:'#e7974b',width:3},marker:{size:4}}],'ET₀ (mm/dia)',{height:310});
+
+ }
+}
+
+function renderExtras(){
+ const c=state?.complementary||{};
+ const metas=[['CPTEC/INPE — 7 dias','cptec'],['OpenWeather One Call 3.0','openweather'],
+ ['Open-Meteo • solo em grade','soil_forecast'],['NASA POWER (histórico em grade)','nasa_power'],
+ ['ECMWF EC46/SEAS5 (tendência)','ecmwf_extended'],['GOES-19 / INPE DSAT','goes_satellite'],
+ ['GPM/IMERG','gpm_imerg'],['ISRIC SoilGrids','soilgrids']];
+ tableFill('source-status-table',['Serviço','Estado real da integração','Horário da consulta (UTC)','Informação'],
+  metas.map(([name,key])=>{const o=c[key]||{};const label=({ok:'✓ Dados válidos',unavailable:'Falha de consulta',requires_key:'Requer chave/plano',requires_setup:'Aguardando configuração',requires_registration:'Requer cadastro',service_paused:'Serviço REST pausado'})[o.state]||'Ainda não integrado';
+   return `<tr><td>${esc(name)}</td><td class="${o.state==='ok'?'ok':'warn'}">${esc(label)}</td><td>${esc(o.queried_at_utc?.slice(0,19).replace('T',' ')||'—')}</td><td><a target="_blank" rel="noopener" href="${esc(o.source_url||'#')}">Fonte ↗</a> · ${esc((o.error||o.note||'').slice(0,140))}</td></tr>`;
+  }));
+ const cp=c.cptec||{};
+ $('cptec-preview').innerHTML=cp.state==='ok'
+  ? `<strong>CPTEC/INPE — previsão independente</strong> (emissão ${esc(cp.product_updated_date)}) · ${esc(cp.place)}/${esc(cp.uf)}<div class="scroll"><table class="compact"><thead><tr><th>Data</th><th>Condição/código</th><th>Tmin °C</th><th>Tmax °C</th></tr></thead><tbody>${(cp.days||[]).map(d=>`<tr><td>${esc(d.date)}</td><td>${esc(d.weather_code)}</td><td>${fmt(d.tmin_c)}</td><td>${fmt(d.tmax_c)}</td></tr>`).join('')}</tbody></table></div><small>Não fornece mm ou probabilidade calibrada neste produto. Não conta como membro do ensemble.</small>`
+  : `CPTEC/INPE — ${esc(cp.error||cp.note||'sem resposta confirmada')}. A previsão do próprio serviço deve ser consultada em sua página.`;
+ const soil=c.soil_forecast||{},sh=soil.hourly||{},key=soil.soil_moisture_keys?.[0];
+ if(soil.state==='ok'&&key&&Array.isArray(sh[key])&&sh[key].some(v=>v!=null)){
+   $('soil-forecast-report').textContent=`Estimativa modelada ${key} (m³/m³), grade ${fmt(soil.grid_lat,3)}, ${fmt(soil.grid_lon,3)}. Não representa sensor no talhão e não é índice calibrado de trafegabilidade.`;
+   const sample=sh[key].slice(0,72),times=(sh.time||[]).slice(0,72);
+   chart('soil-forecast-plot',[{type:'scatter',mode:'lines',x:times.map(dh),y:sample,name:'Umidade do solo na grade',line:{color:'#1689aa',width:3}}],'m³/m³',{height:310});
+ }else{$('soil-forecast-report').textContent='Umidade do solo em grade indisponível: '+(soil.error||soil.note||'sem dados');$('soil-forecast-plot').textContent='Sem estimativa de umidade do solo.';}
+ const ext=c.ecmwf_extended||{},weeks=ext.weeks||[];
+ $('extended-weekly').innerHTML=weeks.length
+  ? `<strong>Cenários semanais ECMWF (36 km; não calibrados):</strong><div class="scroll"><table class="compact"><thead><tr><th>Semana</th><th>P10 chuva mm</th><th>P50</th><th>P90</th><th>Membros</th></tr></thead><tbody>${weeks.map(w=>`<tr><td>${esc(w.start)} a ${esc(w.end)}</td><td>${fmt(w.rain_week_p10_mm)}</td><td>${fmt(w.rain_week_p50_mm)}</td><td>${fmt(w.rain_week_p90_mm)}</td><td>${esc(w.member_count)}</td></tr>`).join('')}</tbody></table></div><small>Não é previsão diária para pulverização. Fontes EC46/SEAS5 variam conforme prazo.</small>`
+  : 'ECMWF 15–60 dias: '+esc(ext.note||ext.error||'produto ainda não configurado')+' Os primeiros 14 dias acima permanecem determinísticos.';
+ $('source-extra-notes').textContent='Status atual por fonte, sem somar modelos correlacionados nem imputar lacunas. NASA POWER é estimativa em grade, não pluviômetro. GOES-19/radar/raios dependem de imagens com atualização e posição confirmadas.';
+}
 function renderCalendar(){
  const base=state?.issued_at_utc?new Date(state.issued_at_utc):new Date();
  const start=localISO(base);
@@ -309,7 +397,7 @@ function render(){
  const d=state?.deterministic;
  const {stale}=statusBar();
  const idx=hoursFrom(d?.hourly,72);
- const guards=[()=>renderOverview(idx),()=>renderRain(idx),()=>renderWind(idx),()=>renderSpray(idx),ensembleScreening,renderMachines,renderVerification,renderCalendar];
+ const guards=[()=>renderOverview(idx),()=>renderRain(idx),()=>renderWind(idx),()=>renderSpray(idx),ensembleScreening,renderMachines,renderVerification,renderOfficial,renderExtras,renderCalendar];
  for(const f of guards){try{f();}catch(err){console.error('Render failure',err);}}
  redrawActive();
 }

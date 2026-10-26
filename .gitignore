@@ -4,3 +4,5 @@ __pycache__/
 .env
 *.pyc
 site/data/latest.json
+
+site/data/slow_sources_cache.json

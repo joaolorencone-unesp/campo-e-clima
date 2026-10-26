@@ -9,6 +9,7 @@ on:
     paths:
       - 'site/**'
       - 'scripts/**'
+      - 'data/observacoes/**'
       - 'requirements.txt'
       - '.github/workflows/pages.yml'
 permissions:
@@ -32,7 +33,20 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Unit tests
         run: python -m pytest -q
+      # NASA POWER and ECMWF extended series update at most once per local day.
+      # The cache is shared between scheduled runs, avoiding 48 identical daily requests.
+      - name: Set local day for slow-source cache
+        run: echo "SLOW_DAY=$(TZ=America/Campo_Grande date +%F)" >> "$GITHUB_ENV"
+      - name: Restore/cache slow source products
+        uses: actions/cache@v4
+        with:
+          path: site/data/slow_sources_cache.json
+          key: slow-sources-v06-${{ env.SLOW_DAY }}
       - name: Collect forecasts
+        env:
+          NASA_POWER_ENABLE: '1'
+          ECMWF_EXTENDED_ENABLE: '1'
+          OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
         run: python scripts/collect.py
       # Temporary audit snapshots for future forecast verification; NOT permanent storage.
       # GitHub artifact retention is limited. Move to durable object storage later.
