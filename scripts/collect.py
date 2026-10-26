@@ -189,12 +189,89 @@ def mix_days(by_model: dict[str, dict]) -> list[dict]:
     return result
 
 
+
+def model_hourly_rain(payload: dict, max_hours: int = 72) -> dict:
+    """Complete-member rainfall totals for forward 1h, 3h and 6h windows.
+
+    Uses member trajectories, not multiplication of marginal probabilities.
+    Only timestamps aligned across members/models are compared. Open-Meteo can
+    interpolate coarser-native-time products to the requested hourly grid.
+    """
+    h = payload.get('hourly') or {}
+    times = h.get('time') or []
+    raw = get_members(payload, 'precipitation')
+    output = {}
+    for start, stamp in enumerate(times[:max_hours]):
+        for duration in (1, 3, 6):
+            if start + duration > len(times):
+                continue
+            # Must be contiguous clock hours; incomplete/coarse timestamps excluded.
+            try:
+                datetimes = [dt.datetime.fromisoformat(t) for t in times[start:start+duration]]
+                if any((b-a) != dt.timedelta(hours=1) for a,b in zip(datetimes,datetimes[1:])):
+                    continue
+            except ValueError:
+                continue
+            totals = []
+            for member in raw:
+                if len(member) != len(times):
+                    continue
+                xs = member[start:start+duration]
+                if len(xs) != duration or any(not isinstance(x,(int,float)) or not math.isfinite(x) or x < 0 for x in xs):
+                    continue
+                totals.append(sum(float(x) for x in xs))
+            if totals:
+                output.setdefault(stamp,{})[duration] = totals
+    return output
+
+
+def mix_hourly_rain(by_model: dict[str,dict]) -> list[dict]:
+    """Mixture: 1/M total model weight, 1/n per valid model member for each window."""
+    stamps = sorted({t for model in by_model.values() for t in model})
+    out = []
+    for stamp in stamps:
+        row = {'time':stamp, 'windows':{}}
+        for duration in (1,3,6):
+            valid = {name:item[stamp][duration] for name,item in by_model.items()
+                     if stamp in item and item[stamp].get(duration)}
+            if not valid:
+                continue
+            model_weight = 1 / len(valid)
+            pairs = [(value,model_weight/len(members)) for members in valid.values() for value in members]
+            summary = {
+                'models':len(valid),
+                'members':sum(len(members) for members in valid.values()),
+                'mean_mm':round(sum(v*w for v,w in pairs),3),
+                'p10_mm':round(weighted_quantile(pairs,.1),3),
+                'p50_mm':round(weighted_quantile(pairs,.5),3),
+                'p90_mm':round(weighted_quantile(pairs,.9),3),
+            }
+            for threshold in (0.1,1,3,5,10,20):
+                summary['p_gt_'+str(threshold).replace('.','_')+'_mm'] = round(sum(w for v,w in pairs if v>threshold),4)
+            row['windows'][str(duration)] = summary
+        if row['windows']:
+            out.append(row)
+    return out
+
+
+def rain_models_comparison(by_model: dict[str,dict]) -> list[dict]:
+    """Daily member-based means and exceedances, grouped by named model."""
+    result = []
+    for name,item in by_model.items():
+        for day,members in sorted(item.get('days',{}).items()):
+            if not members:
+                continue
+            result.append({'model':name,'date':day,'members':len(members),
+                           'mean_mm':round(sum(members)/len(members),3),
+                           'p_gt_5_mm':round(sum(x>5 for x in members)/len(members),4)})
+    return result
+
 def main():
     recorded = dt.datetime.now(dt.timezone.utc).isoformat()
-    result: dict[str, Any] = {'schema_version': 1, 'issued_at_utc': recorded,
+    result: dict[str, Any] = {'schema_version': 2, 'issued_at_utc': recorded,
              'site': {'latitude': LAT, 'longitude': LON, 'timezone': TZ},
-             'methodology': 'Equal total weight per valid ensemble model; uncalibrated member frequencies',
-             'sources': {}, 'deterministic': None, 'rain_ensemble_daily': [], 'gust_ensemble_daily': [], 'ensemble_models': {},
+             'methodology': 'Equal total weight per valid ensemble model; uncalibrated member frequencies; forward 1/3/6h totals from joint member trajectories; interpolated hourly grids not independent measurements',
+             'sources': {}, 'deterministic': None, 'rain_ensemble_daily': [], 'gust_ensemble_daily': [], 'rain_ensemble_hourly': [], 'rain_models_daily': [], 'ensemble_models': {},
              'warnings': []}
     try:
         f = forecast()
@@ -209,6 +286,7 @@ def main():
         result['warnings'].append('Forecast unavailable; no replacement with old data')
 
     by_model = {}
+    by_model_hourly = {}
     by_model_gust = {}
     for name, code in MODELS.items():
         try:
@@ -222,21 +300,26 @@ def main():
                 e = fetch(ENSEMBLE_URL, {**base_params(), 'models': code, 'hourly': 'precipitation'})
             d = model_daily_rain(e)
             g = model_daily_gust(e)
+            hourly_rain = model_hourly_rain(e)
             result['ensemble_models'][name] = {
                 'code': code, 'precipitation_members': d['member_count'],
                 'gust_members': g['member_count'],
                 'grid_lat': e.get('latitude'), 'grid_lon': e.get('longitude'),
                 'collected_at_utc': dt.datetime.now(dt.timezone.utc).isoformat(),
                 'gust_request_error': gust_request_error,
-                'state': 'ok' if d['days'] else 'no_valid_daily_rain_members'}
-            if d['days']:
+                'state': 'ok' if any(d['days'].values()) else 'no_valid_daily_rain_members'}
+            if any(d['days'].values()):
                 by_model[name] = d
+            if hourly_rain:
+                by_model_hourly[name] = hourly_rain
             if any(g['days'].values()):
                 by_model_gust[name] = g
         except Exception as exc:
             result['ensemble_models'][name] = {'code': code, 'state': 'error', 'detail': str(exc)[:220]}
         time.sleep(.2)
     result['rain_ensemble_daily'] = mix_days(by_model)
+    result['rain_ensemble_hourly'] = mix_hourly_rain(by_model_hourly)
+    result['rain_models_daily'] = rain_models_comparison(by_model)
     result['gust_ensemble_daily'] = mix_gust_days(by_model_gust)
     if not result['rain_ensemble_daily']:
         result['warnings'].append('No complete member/day precipitation sample; ensemble chart unavailable')

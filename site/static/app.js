@@ -1,56 +1,272 @@
 'use strict';
-const DATA_URL='data/latest.json';let state=null;const $=id=>document.getElementById(id);const fmt=(x,d=1)=>x===null||x===undefined||!Number.isFinite(Number(x))?'—':Number(x).toFixed(d);const esc=s=>String(s??'—').replace(/[&<>"]/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[x]));
-const hoursFrom=(h,n=48)=>{if(!h?.time)return [];const now=new Date();return h.time.map((t,i)=>({t,i,date:new Date(`${t}-04:00`)})).filter(x=>x.date>=new Date(now.getTime()-3600000)).slice(0,n)};
-const val=(h,k,i)=>h?.[k]?.[i]??null;
-function plot(id,traces,titleY){if(!window.Plotly){$(id).innerHTML='<p>Gráfico indisponível sem conexão com a biblioteca de visualização.</p>';return;}if(!traces.length){$(id).textContent='Sem valores verificados disponíveis.';return;}Plotly.react(id,traces,{paper_bgcolor:'#fff',plot_bgcolor:'#fff',font:{family:'system-ui',color:'#506476',size:12},margin:{l:54,r:15,t:18,b:70},legend:{orientation:'h',y:-.25},hovermode:'x unified',xaxis:{showgrid:true,gridcolor:'#eaf0f4'},yaxis:{title:titleY,gridcolor:'#eaf0f4'},height:320},{responsive:true,displayModeBar:false});}
-function render(){const d=state?.deterministic,h=d?.hourly,idx=hoursFrom(h,48);const fresh=state?.issued_at_utc?new Date(state.issued_at_utc):null;const age=fresh?Math.round((Date.now()-fresh.getTime())/60000):null;const stale=age===null||age>90||age<0;const ensemble=state?.rain_ensemble_daily||[];
- $('last-updated').textContent=fresh?'Coletado: '+fresh.toLocaleString('pt-BR',{timeZone:'America/Campo_Grande'})+' (Naviraí)':'Nenhuma coleta disponível';$('status').innerHTML=stale?'⚠️ <b>Sem coleta recente.</b> Valores eventualmente presentes são históricos e não devem ser utilizados como previsão atual.':`✓ Coleta há ${age} min. ${esc(Object.keys(state?.ensemble_models||{}).filter(k=>state.ensemble_models[k].state==='ok').length)} modelos com dados diários de chuva; frequências ainda não calibradas.`;
- const cur=d?.current||{};const next24=idx.slice(0,24),rainValues=next24.map(x=>val(h,'precipitation',x.i));const rainNext=rainValues.length===24&&rainValues.every(x=>x!==null&&Number.isFinite(Number(x)))?rainValues.reduce((a,x)=>a+Number(x),0):null;
- $('metrics').innerHTML=[['Temperatura (modelo, horário atual)',cur.temperature_2m,'°C'],['Umidade relativa',cur.relative_humidity_2m,'%'],['Vento médio',cur.wind_speed_10m,'km/h'],['Chuva prevista 24h',rainNext,'mm']].map(([label,x,u])=>`<article class="metric"><span>${label}</span><strong>${fmt(x,1)} ${u}</strong><small>${stale?'Sem dados recentes':label==='Chuva prevista 24h'?'Forecast determinístico':'Open-Meteo Forecast'}</small></article>`).join('');
- if(!idx.length){['temp-plot','hour-rain-plot','wind-plot'].forEach(id=>$(id).textContent='Sem dados horários atuais.');['hour-table','wind-table','spray-table'].forEach(id=>$(id).innerHTML='<tr><td>Sem dados disponíveis.</td></tr>');}else{
- const x=idx.map(z=>z.t.slice(5).replace('T',' '));plot('temp-plot',[{x,y:idx.map(z=>val(h,'temperature_2m',z.i)),name:'Temperatura (°C)',mode:'lines',line:{color:'#eb8453',width:3}},{x,y:idx.map(z=>val(h,'relative_humidity_2m',z.i)),name:'UR (%)',mode:'lines',yaxis:'y2',line:{color:'#168aa3',width:2}}],'Temperatura °C');if(window.Plotly)Plotly.relayout('temp-plot',{'yaxis2':{overlaying:'y',side:'right',title:'UR %',range:[0,100]}});
- plot('hour-rain-plot',[{x,y:idx.map(z=>val(h,'precipitation',z.i)),name:'Chuva prevista (mm)',type:'bar',marker:{color:'#2c89c4'}}],'mm/h');
- plot('wind-plot',[{x,y:idx.map(z=>val(h,'wind_speed_10m',z.i)),name:'Vento médio (km/h)',mode:'lines',line:{color:'#15a085',width:3}},{x,y:idx.map(z=>val(h,'wind_gusts_10m',z.i)),name:'Rajada (km/h)',mode:'lines',line:{color:'#df7757',width:2,dash:'dot'}}],'km/h');
- const header=(titles)=>'<thead><tr>'+titles.map(s=>`<th>${s}</th>`).join('')+'</tr></thead>';
- $('hour-table').innerHTML=header(['Data/hora (UTC−4)','T °C','UR %','Chuva mm','P(chuva) %*','Vento km/h','Rajada km/h','Direção °'])+'<tbody>'+idx.map(z=>'<tr><td>'+esc(z.t.slice(5).replace('T',' '))+'</td>'+[['temperature_2m',1],['relative_humidity_2m',0],['precipitation',1],['precipitation_probability',0],['wind_speed_10m',1],['wind_gusts_10m',1],['wind_direction_10m',0]].map(([k,p])=>`<td>${fmt(val(h,k,z.i),p)}</td>`).join('')+'</tr>').join('')+'</tbody>';
- $('wind-table').innerHTML=header(['Hora','De onde sopra °','Vento médio km/h','Rajada km/h'])+'<tbody>'+idx.map(z=>`<tr><td>${esc(z.t)}</td><td>${fmt(val(h,'wind_direction_10m',z.i),0)}</td><td>${fmt(val(h,'wind_speed_10m',z.i))}</td><td class="${Number(val(h,'wind_gusts_10m',z.i))>30?'bad':'warn'}">${fmt(val(h,'wind_gusts_10m',z.i))}</td></tr>`).join('')+'</tbody>';
- renderSpray();}
- if(ensemble.length){let x=ensemble.map(z=>z.date.slice(5));plot('rain-plot',[{x,y:ensemble.map(z=>z.mean_mm),type:'bar',name:'Média multimodelo',marker:{color:'#438dc4'}},{x,y:ensemble.map(z=>z.p10_mm),mode:'lines',name:'P10',line:{color:'#acc7e0',dash:'dot'}},{x,y:ensemble.map(z=>z.p50_mm),mode:'lines',name:'Mediana P50',line:{color:'#15638e',width:3}},{x,y:ensemble.map(z=>z.p90_mm),mode:'lines',name:'P90',line:{color:'#df8a59',dash:'dash'}}],'mm/dia');$('rain-table').innerHTML='<thead><tr><th>Data</th><th>Modelos válidos</th><th>Membros</th><th>Média mm</th><th>P10</th><th>P50</th><th>P90</th><th>Frequência >5 mm</th><th>>10 mm</th></tr></thead><tbody>'+ensemble.map(z=>`<tr><td>${z.date}</td><td>${z.model_count}</td><td>${z.member_count}</td><td>${fmt(z.mean_mm)}</td><td>${fmt(z.p10_mm)}</td><td>${fmt(z.p50_mm)}</td><td>${fmt(z.p90_mm)}</td><td>${fmt(z.p_gt_5_mm*100,0)}%</td><td>${fmt(z.p_gt_10_mm*100,0)}%</td></tr>`).join('')+'</tbody>';}else{$('rain-plot').textContent='Ensemble indisponível nesta coleta; nenhuma probabilidade será estimada.';$('rain-table').innerHTML='<tr><td>Sem membros completos validados.</td></tr>';}renderDaily();renderGust();renderCalendar();}
-function renderDaily(){
- const d=state?.deterministic?.daily;
- const days=d?.time||[];
- const rows=days.map((date,i)=>`<tr><td>${esc(date)}</td><td>${fmt(val(d,'temperature_2m_min',i))}</td><td>${fmt(val(d,'temperature_2m_max',i))}</td><td>${fmt(val(d,'precipitation_sum',i))}</td><td>${fmt(val(d,'precipitation_probability_max',i),0)}</td><td>${fmt(val(d,'wind_gusts_10m_max',i))}</td></tr>`).join('');
- $('daily-table').innerHTML=days.length?'<thead><tr><th>Dia</th><th>T min °C</th><th>T máx °C</th><th>Chuva mm</th><th>Chance máxima %*</th><th>Rajada máx km/h</th></tr></thead><tbody>'+rows+'</tbody>':'<tr><td>Sem previsão diária válida.</td></tr>';
+// Campo e Clima v0.3: plots deliberately use CATEGORY axes to avoid date parsing
+// bugs (e.g. 26/10 rendered as 2011). Hidden plots render when their tab opens.
+const DATA_URL = 'data/latest.json';
+let state = null;
+const chartSpecs = new Map();
+const $ = id => document.getElementById(id);
+const fmt = (n, d=1) => n == null || n === '' || !Number.isFinite(Number(n)) ? '—' : Number(n).toFixed(d).replace('.', ',');
+const num = n => n == null || n === '' || !Number.isFinite(Number(n)) ? null : Number(n);
+const esc = x => String(x ?? '—').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const val = (obj,key,i)=>obj?.[key]?.[i] ?? null;
+const ddmm = iso => typeof iso==='string' && /^\d{4}-\d\d-\d\d/.test(iso) ? iso.slice(8,10)+'/'+iso.slice(5,7):iso;
+const hh = iso => iso?.slice(11,13)+'h';
+const dh = iso => ddmm(iso)+' '+hh(iso);
+const dateLocal = () => new Intl.DateTimeFormat('en-CA',{timeZone:'America/Campo_Grande',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+function localISO(date){ // construct from explicit date components to avoid locale-dependent parsing
+ const items = new Intl.DateTimeFormat('en-US',{timeZone:'America/Campo_Grande',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(date);
+ const find = t=>items.find(x=>x.type===t)?.value;
+ return `${find('year')}-${find('month')}-${find('day')}`;
 }
-function renderGust(){
- const a=state?.gust_ensemble_daily||[];
- if(!a.length){$('gust-plot').textContent='Nenhum modelo com amostra diária completa de rajadas disponível.';$('gust-table').innerHTML='<tr><td>Sem amostra válida; não equivale a risco zero.</td></tr>';return;}
- const x=a.map(z=>z.date.slice(5));plot('gust-plot',[
-   {x,y:a.map(z=>z.p_gt_30_kmh*100),type:'bar',name:'>30 km/h',marker:{color:'#eeb75e'}},
-   {x,y:a.map(z=>z.p_gt_40_kmh*100),type:'bar',name:'>40 km/h',marker:{color:'#e17c62'}},
-   {x,y:a.map(z=>z.p_gt_60_kmh*100),type:'bar',name:'>60 km/h',marker:{color:'#c14959'}}],'Frequência (%)');
- $('gust-table').innerHTML='<thead><tr><th>Dia</th><th>Modelos</th><th>Membros</th><th>Mediana km/h</th><th>P90 km/h</th><th>>30 km/h</th><th>>40 km/h</th><th>>60 km/h</th></tr></thead><tbody>'+a.map(z=>`<tr><td>${esc(z.date)}</td><td>${z.model_count}</td><td>${z.member_count}</td><td>${fmt(z.p50_kmh)}</td><td>${fmt(z.p90_kmh)}</td><td>${fmt(z.p_gt_30_kmh*100,0)}%</td><td>${fmt(z.p_gt_40_kmh*100,0)}%</td><td>${fmt(z.p_gt_60_kmh*100,0)}%</td></tr>`).join('')+'</tbody>';
+function hoursFrom(h,n=72){
+ const now=Date.now(); if(!Array.isArray(h?.time)) return [];
+ return h.time.map((t,i)=>({t,i,date:new Date(t+'-04:00')}))
+   .filter(x=>Number.isFinite(x.date.getTime()) && x.date.getTime()>=now-3600000).slice(0,n);
 }
-function renderSpray(){const h=state?.deterministic?.hourly,idx=hoursFrom(h,48),kind=$('product').value;
- $('spray-table').innerHTML='<thead><tr><th>Hora</th><th>T</th><th>UR</th><th>VPD kPa</th><th>Vento</th><th>Rajada</th><th>Chuva</th><th>Triagem meteorológica</th><th>Motivo</th></tr></thead><tbody>'+idx.map(z=>{const t=val(h,'temperature_2m',z.i),rh=val(h,'relative_humidity_2m',z.i),v=val(h,'wind_speed_10m',z.i),gust=val(h,'wind_gusts_10m',z.i),pr=val(h,'precipitation',z.i),vpd=val(h,'vapour_pressure_deficit',z.i);let reasons=[];if(t===null||rh===null||v===null||gust===null||pr===null||vpd===null)reasons.push('Variáveis faltantes');else{if(t>=30)reasons.push('Temperatura elevada');if(rh<55)reasons.push('UR baixa');if(v<3)reasons.push('Calmaria e possível inversão');if(v>10)reasons.push('Vento >10 km/h');if(gust>25)reasons.push('Rajadas elevadas');if(pr>0.1)reasons.push('Chuva prevista');if(kind==='herb'&&vpd!==null&&vpd>1.2)reasons.push('VPD alto para triagem conservadora');}let cls=reasons.includes('Variáveis faltantes')?'Indeterminado / sem dados':reasons.length?'Desfavorável / revisar':'Indeterminado';return `<tr><td>${esc(z.t.slice(5))}</td><td class="${t>=30?'bad':''}">${fmt(t)}</td><td class="${rh!==null&&rh<55?'bad':''}">${fmt(rh,0)}</td><td>${fmt(vpd,2)}</td><td class="${v!==null&&(v>10||v<3)?'bad':''}">${fmt(v)}</td><td class="${gust>25?'bad':''}">${fmt(gust)}</td><td class="${pr>.1?'bad':''}">${fmt(pr)}</td><td class="${reasons.length?'bad':'na'}">${cls}</td><td>${esc(reasons.join('; ')||'Inversão, bula, deriva e campo não verificados')}</td></tr>`;}).join('')+'</tbody>';
+const percent=(p,d=0)=>p==null?'—':fmt(Number(p)*100,d)+'%';
+const rainRow=(stamp)=>state?.rain_ensemble_hourly?.find(row=>row.time===stamp)||null;
+const wval=(stamp,horizon,key)=>rainRow(stamp)?.windows?.[String(horizon)]?.[key]??null;
+const directionName = degrees => { const d=num(degrees);return d===null?'—':['N','NE','E','SE','S','SO','O','NO'][Math.round((d%360)/45)%8]; };
+const safe = (n,d=1) => num(n)===null?'na':'';
+function chart(id,traces,ytitle='',extra={}){
+ chartSpecs.set(id,{traces,ytitle,extra});drawChart(id);
+}
+function drawChart(id){
+ const element=$(id),spec=chartSpecs.get(id);
+ if(!element||!spec) return;
+ if(!spec.traces?.length){element.textContent='Não há amostra válida para este gráfico.';return;}
+ // Plotly cannot calculate widths when a parent tab has display:none.
+ if(!element.closest('.tab')?.classList.contains('active'))return;
+ if(!window.Plotly){element.innerHTML='<p class="notice muted">Visualização interativa indisponível. Consulte as tabelas abaixo.</p>';return;}
+ const layout={autosize:true,height:spec.extra.height||360,
+   paper_bgcolor:'#fff',plot_bgcolor:'#fff',
+   font:{family:'system-ui,Arial,sans-serif',size:12,color:'#456479'},
+   margin:{t:24,r:55,l:62,b:78},
+   legend:{orientation:'h',y:-0.27,x:0,font:{size:11}},
+   hovermode:'x unified',
+   xaxis:{type:'category',tickangle:0,nticks:9,showgrid:true,gridcolor:'#edf2f6',tickfont:{size:10},automargin:true},
+   yaxis:{title:spec.ytitle,zeroline:false,showgrid:true,gridcolor:'#edf2f6',rangemode:'tozero',automargin:true},
+   ...spec.extra};
+ const conf={responsive:true,displayModeBar:false,scrollZoom:false};
+ try{Plotly.react(element,spec.traces,layout,conf);}catch(err){element.textContent='Falha ao desenhar gráfico: '+String(err);}
+}
+function redrawActive(){for(const id of chartSpecs.keys()){const el=$(id);if(el?.closest('.tab')?.classList.contains('active'))drawChart(id);}}
+function tableHead(titles){return '<thead><tr>'+titles.map(x=>`<th>${esc(x)}</th>`).join('')+'</tr></thead>';}
+function tableFill(id,titles,rows,empty='Sem dados válidos para esta seção.'){$(id).innerHTML=tableHead(titles)+'<tbody>'+(rows.length?rows.join(''):`<tr><td colspan="${titles.length}" class="na">${esc(empty)}</td></tr>` )+'</tbody>';}
+const cell=(x,cls='',d=1)=>`<td class="${cls}">${fmt(x,d)}</td>`;
+function statusBar(){
+ const d=state?.deterministic;
+ const issued=state?.issued_at_utc;
+ const time=issued?new Date(issued):null;
+ const age=time && Number.isFinite(time.getTime())?Math.round((Date.now()-time.getTime())/60000):null;
+ const stale=age===null||age<0||age>90;
+ $('last-updated').textContent=time?`Coleta: ${time.toLocaleString('pt-BR',{timeZone:'America/Campo_Grande',dateStyle:'short',timeStyle:'short'})} (Naviraí)`:'Sem coleta publicada';
+ const modelOK=Object.values(state?.ensemble_models||{}).filter(x=>x.state==='ok' && x.precipitation_members>0).length;
+ const gustOK=Object.values(state?.ensemble_models||{}).filter(x=>x.gust_members>0).length;
+ $('status').classList.toggle('warning',stale);
+ $('status').innerHTML=stale
+  ?`⚠️ <strong>Coleta indisponível ou desatualizada.</strong> Última emissão: ${age===null?'não registrada':age+' minutos atrás'}. Os valores antigos, se presentes, não devem orientar operações atuais.`
+  :`✓ <strong>Coleta atualizada há ${age} minuto(s).</strong> ${modelOK} modelos com membros de chuva; ${gustOK} com rajadas. <strong>Frequências ainda não calibradas.</strong> Avisos e observações oficiais não são atualizados neste MVP.`;
+ return {stale,age,modelOK,gustOK,issued};
+}
+function metric(label,value,unit,desc){return `<article class="metric"><span class="label">${esc(label)}</span><span class="number">${fmt(value)}<span class="unit"> ${esc(unit)}</span></span><span class="hint">${esc(desc)}</span></article>`;}
+function dailyData(){return state?.deterministic?.daily||{};}
+function renderOverview(idx){
+ const d=state?.deterministic,h=d?.hourly||{},c=d?.current||{},daily=dailyData();
+ const v=idx.slice(0,24).map(x=>val(h,'precipitation',x.i));
+ const rain24=v.length===24&&v.every(x=>num(x)!==null)?v.reduce((s,x)=>s+Number(x),0):null;
+ const todayLocal=localISO(new Date());
+ const currentDate=idx[0]?.t?.slice(0,10)||todayLocal;
+ const ens=state?.rain_ensemble_daily||[];
+ const biggest=ens.filter(x=>x.date>=currentDate).slice(0,7).sort((a,b)=>b.mean_mm-a.mean_mm)[0];
+ const strongest=(state?.gust_ensemble_daily||[]).filter(x=>x.date>=currentDate).sort((a,b)=>b.p_gt_40_kmh-a.p_gt_40_kmh)[0];
+ const currentRain=num(c.precipitation);
+ $('metrics').innerHTML=[
+  metric('Temperatura prevista agora',c.temperature_2m,'°C','Open-Meteo Forecast'),
+  metric('Umidade relativa',c.relative_humidity_2m,'%','Previsão de modelo'),
+  metric('Vento médio',c.wind_speed_10m,'km/h',directionName(c.wind_direction_10m)+' (de onde sopra)'),
+  metric('Chuva nas próximas 24h',rain24,'mm','Previsão determinística'),
+  metric('Maior chuva média • 7 dias',biggest?.mean_mm,'mm',biggest?ddmm(biggest.date)+' • multimodelo':'Ensemble indisponível'),
+  metric('Rajada forte >40 km/h',strongest?.p_gt_40_kmh!=null?strongest.p_gt_40_kmh*100:null,'% ',strongest?'Frequência em '+ddmm(strongest.date):'Sem ensemble')
+ ].join('');
+ const insights=[];
+ if(biggest)insights.push({cls:'warn',title:`🌧 Maior volume previsto: ${ddmm(biggest.date)}`,desc:`Chuva média multimodelo ${fmt(biggest.mean_mm)} mm; P10–P90: ${fmt(biggest.p10_mm)}–${fmt(biggest.p90_mm)} mm; frequência >10 mm/dia: ${percent(biggest.p_gt_10_mm)}.`});
+ if(strongest)insights.push({cls:'risk',title:`🌬 Atenção às rajadas: ${ddmm(strongest.date)}`,desc:`Frequência >30 km/h: ${percent(strongest.p_gt_30_kmh)}; >40 km/h: ${percent(strongest.p_gt_40_kmh)}. Apenas ${strongest.model_count} modelos com rajadas válidas.`});
+ const nextSpray=idx.map(x=>({...sprayAssessment(h,x.i,'herb'),t:x.t})).filter(x=>x.cls==='bad').slice(0,1);
+ if(nextSpray.length)insights.push({cls:'risk',title:`🚁 Pulverização: restrição às ${dh(nextSpray[0].t)}`,desc:nextSpray[0].reasons.join('; ')+'. Confirmar condições no talhão.'});
+ insights.push({cls:'',title:'🔬 Grau de certeza',desc:'Os percentuais são frequências entre membros dos ensembles. Ainda não temos histórico observacional auditado para calibrar a previsão em Naviraí.'});
+ $('insights').innerHTML=insights.map(x=>`<div class="insight ${x.cls}"><strong>${esc(x.title)}</strong><div>${esc(x.desc)}</div></div>`).join('');
+ if(idx.length){
+  const x=idx.map(y=>dh(y.t));
+  chart('temp-plot',[{x,y:idx.map(z=>val(h,'temperature_2m',z.i)),type:'scatter',mode:'lines',name:'Temperatura °C',line:{color:'#ee9566',width:3},hovertemplate:'%{y:.1f} °C<extra></extra>'},
+     {x,y:idx.map(z=>val(h,'relative_humidity_2m',z.i)),type:'scatter',mode:'lines',name:'UR %',yaxis:'y2',line:{color:'#158bae',width:2.6},hovertemplate:'%{y:.0f}%<extra></extra>'}],'Temperatura °C',{
+        yaxis2:{overlaying:'y',side:'right',title:'UR (%)',range:[0,100],showgrid:false}});
+  chart('hour-rain-plot',[{x,y:idx.map(z=>val(h,'precipitation',z.i)),type:'bar',name:'Chuva mm/h',marker:{color:'#4a9acc'},hovertemplate:'%{y:.1f} mm/h<extra></extra>'}],'mm/h');
+  const vpd=idx.map(z=>val(h,'vapour_pressure_deficit',z.i));
+  if(vpd.some(z=>num(z)!==null))chart('vpd-plot',[{x,y:vpd,type:'scatter',mode:'lines',name:'VPD',fill:'tozeroy',fillcolor:'rgba(228,146,61,.1)',line:{color:'#d98b41',width:3},hovertemplate:'%{y:.2f} kPa<extra></extra>'}],'kPa');
+  else $('vpd-plot').textContent='VPD não disponível nesta rodada.';
+  const pressure=idx.map(z=>val(h,'pressure_msl',z.i));
+  if(pressure.some(z=>num(z)!==null))chart('pressure-plot',[{x,y:pressure,type:'scatter',mode:'lines',name:'Pressão MSL',line:{color:'#6a6cb3',width:3},hovertemplate:'%{y:.1f} hPa<extra></extra>'}],'hPa',{
+     yaxis:{title:'hPa',gridcolor:'#edf2f6',autorange:true}});
+  else $('pressure-plot').textContent='Pressão ao nível do mar não disponível nesta rodada.';
+ }else{['temp-plot','hour-rain-plot','vpd-plot','pressure-plot'].forEach(k=>$(k).textContent='Sem previsão horária utilizável nesta edição.');}
+ const rainMap=new Map((state?.rain_ensemble_daily||[]).map(x=>[x.date,x]));
+ const gustMap=new Map((state?.gust_ensemble_daily||[]).map(x=>[x.date,x]));
+ const rows=(daily.time||[]).slice(0,7).map((date,i)=>{
+  const r=rainMap.get(date),g=gustMap.get(date);
+  return `<tr><td>${esc(ddmm(date))}</td>${cell(val(daily,'temperature_2m_min',i))}${cell(val(daily,'temperature_2m_max',i))}${cell(val(daily,'precipitation_sum',i))}${cell(r?.p50_mm)}${cell(r?.p90_mm)}<td>${percent(r?.p_gt_5_mm)}</td><td class="${g?.p_gt_30_kmh>=.5?'bad':''}">${percent(g?.p_gt_30_kmh)}</td></tr>`;
+ });
+ tableFill('summary-table',['Data','T mín °C','T máx °C','Chuva det. mm','Chuva P50 mm','P90 mm','Freq. >5 mm','Freq. rajada >30'],rows);
+ const currentISO=localISO(new Date());
+ const tomorrowISO=new Date(Date.parse(currentISO+'T12:00:00Z')+86400000).toISOString().slice(0,10);
+ const hourRows=(targetDate,isToday)=>{
+  if(!Array.isArray(h.time))return [];
+  return h.time.map((t,i)=>({t,i})).filter(x=>x.t.startsWith(targetDate) && (!isToday || new Date(x.t+'-04:00').getTime()>=Date.now()-3600000))
+    .map(({t,i})=>{const rh=val(h,'relative_humidity_2m',i),wind=val(h,'wind_speed_10m',i),gust=val(h,'wind_gusts_10m',i);
+      return `<tr><td>${hh(t)}</td>${cell(val(h,'temperature_2m',i))}${cell(rh,rh!==null&&rh<55?'bad':'',0)}${cell(val(h,'precipitation',i))}<td>${percent(wval(t,1,'p_gt_0_1_mm'))}</td><td>${percent(wval(t,1,'p_gt_1_mm'))}</td>${cell(wind,wind!=null&&(wind>10||wind<3)?'bad':'')}${cell(gust,gust!=null&&gust>30?'bad':'')}<td>${esc(directionName(val(h,'wind_direction_10m',i)))}</td></tr>`;
+   });
+ };
+ const titles=['Hora local','T °C','UR %','Chuva mm/h','Freq. >0,1 mm','Freq. >1 mm','Vento km/h','Rajada km/h','Vento de'];
+ tableFill('today-table',titles,hourRows(currentISO,true),'Hoje não há mais horas futuras ou não foram encontrados dados.');
+ tableFill('tomorrow-table',titles,hourRows(tomorrowISO,false),'Amanhã: previsão horária indisponível.');
+}
+function renderRain(idx){
+ const rain=state?.rain_ensemble_daily||[];
+ const x=rain.map(z=>ddmm(z.date));
+ if(rain.length){
+   chart('rain-plot',[
+     {x,y:rain.map(z=>z.p10_mm),type:'scatter',mode:'lines',name:'P10 • cenário seco',line:{color:'#aecfe3',width:1},hovertemplate:'P10 %{y:.1f} mm<extra></extra>'},
+     {x,y:rain.map(z=>z.p90_mm),type:'scatter',mode:'lines',name:'P90 • cenário úmido',line:{color:'#7fb8de',width:1},fill:'tonexty',fillcolor:'rgba(48,145,209,.17)',hovertemplate:'P90 %{y:.1f} mm<extra></extra>'},
+     {x,y:rain.map(z=>z.p50_mm),type:'scatter',mode:'lines+markers',name:'Mediana P50',line:{color:'#176eaa',width:3},marker:{size:8},hovertemplate:'P50 %{y:.1f} mm<extra></extra>'},
+     {x,y:rain.map(z=>z.mean_mm),type:'scatter',mode:'lines+markers',name:'Média',line:{color:'#e49a45',width:2,dash:'dot'},hovertemplate:'Média %{y:.1f} mm<extra></extra>'}
+   ],'Chuva (mm/dia)');
+   const thresholds=[[1,'#66bbcc'],[5,'#448dc6'],[10,'#e4a354'],[20,'#ba526b']];
+   chart('rain-risk-plot',thresholds.map(([n,c])=>({x,y:rain.map(z=>z['p_gt_'+n+'_mm']*100),type:'scatter',mode:'lines+markers',name:'>'+n+' mm/dia',line:{color:c,width:2.5},marker:{size:7},hovertemplate:'%{y:.0f}%<extra></extra>'})),'Frequência (%)',{yaxis:{range:[0,100],title:'Frequência (%)',gridcolor:'#edf2f6'}});
+ }else{['rain-plot','rain-risk-plot'].forEach(id=>$(id).textContent='Sem distribuição validada de chuva nesta coleta.');}
+ const titles=['Dia','Modelos','Membros','Média mm','P10','P50','P90','>1 mm','>5 mm','>10 mm','>20 mm'];
+ tableFill('rain-table',titles,rain.map(z=>`<tr><td>${esc(ddmm(z.date))}</td><td>${z.model_count}</td><td>${z.member_count}</td>${cell(z.mean_mm)}${cell(z.p10_mm)}${cell(z.p50_mm)}${cell(z.p90_mm)}<td>${percent(z.p_gt_1_mm)}</td><td>${percent(z.p_gt_5_mm)}</td><td>${percent(z.p_gt_10_mm)}</td><td>${percent(z.p_gt_20_mm)}</td></tr>`));
+ const hr=state?.rain_ensemble_hourly||[];
+ const forward=hr.filter(z=>new Date(z.time+'-04:00').getTime()>=Date.now()-3600000).slice(0,72);
+ if(forward.length){const rx=forward.map(z=>dh(z.time));
+   chart('rain-hour-prob',[
+     {x:rx,y:forward.map(z=>z.windows?.['1']?.mean_mm??null),type:'bar',name:'Média mm/h',marker:{color:'#76b7df'},hovertemplate:'%{y:.2f} mm/h<extra></extra>'},
+     {x:rx,y:forward.map(z=>num(z.windows?.['1']?.p_gt_1_mm)!=null?z.windows['1'].p_gt_1_mm*100:null),type:'scatter',mode:'lines',name:'Freq. >1 mm/h',yaxis:'y2',line:{color:'#c85f51',width:2.4},hovertemplate:'%{y:.0f}%<extra></extra>'}
+   ],'Chuva (mm/h)',{yaxis2:{title:'Frequência (%)',overlaying:'y',side:'right',range:[0,100],showgrid:false}});
+ }else{$('rain-hour-prob').textContent='Sem membros horários válidos; os acumulados diários ainda podem estar disponíveis.';}
+ const windows=[];
+ // Show timestamps at 3-hour intervals to avoid double-counting overlapping windows in a table.
+ for(const o of forward){if(Number(o.time.slice(11,13))%3!==0)continue;
+  const a=o.windows?.['3'],b=o.windows?.['6'];if(!a&&!b)continue;
+  windows.push(`<tr><td>${esc(dh(o.time))}</td>${cell(a?.mean_mm)}<td>${percent(a?.p_gt_1_mm)}</td><td>${percent(a?.p_gt_5_mm)}</td><td>${percent(a?.p_gt_10_mm)}</td>${cell(b?.mean_mm)}<td>${percent(b?.p_gt_5_mm)}</td><td>${percent(b?.p_gt_10_mm)}</td><td class="na">${a?.models??b?.models??'—'}</td></tr>`);
+ }
+ tableFill('rain-window-table',['Início local','Média 3h mm','Freq. 3h >1','Freq. 3h >5','Freq. 3h >10','Média 6h mm','Freq. 6h >5','Freq. 6h >10','Modelos'],windows,'Agregação horária conjunta ainda não disponível para esta coleta.');
+ const mrows=state?.rain_models_daily||[];
+ if(mrows.length){const names=[...new Set(mrows.map(z=>z.model))],dates=[...new Set(mrows.map(z=>z.date))].sort();const map=new Map(mrows.map(z=>[z.model+'|'+z.date,z.mean_mm]));
+   chart('rain-models-plot',[{type:'heatmap',x:dates.map(ddmm),y:names,z:names.map(name=>dates.map(date=>map.get(name+'|'+date)??null)),colorscale:[[0,'#f1f8fc'],[.2,'#aed9ef'],[.5,'#4b98ca'],[1,'#115b8f']],colorbar:{title:'mm/dia',len:.84},hovertemplate:'%{y}<br>%{x}<br>Média %{z:.1f} mm<extra></extra>'}],'',{
+      height:Math.max(390,names.length*34+120),margin:{l:155,r:50,t:30,b:78},hovermode:'closest',yaxis:{autorange:'reversed',showgrid:false,automargin:true}});
+ }else{$('rain-models-plot').textContent='Sem dados individuais por modelo nesta versão da coleta. A atualização do coletor permitirá esta comparação.';}
+ const d=dailyData();tableFill('daily-table',['Data','T mín °C','T máx °C','Chuva mm','Chance máx. %*','Rajada máx km/h'],(d.time||[]).map((date,i)=>`<tr><td>${esc(ddmm(date))}</td>${cell(val(d,'temperature_2m_min',i))}${cell(val(d,'temperature_2m_max',i))}${cell(val(d,'precipitation_sum',i))}${cell(val(d,'precipitation_probability_max',i),'',0)}${cell(val(d,'wind_gusts_10m_max',i))}</tr>`));
+}
+function renderWind(idx){
+ const h=state?.deterministic?.hourly||{};
+ if(idx.length){let x=idx.map(z=>dh(z.t));
+  chart('wind-plot',[{x,y:idx.map(z=>val(h,'wind_speed_10m',z.i)),type:'scatter',mode:'lines',name:'Vento médio',line:{color:'#21937f',width:3},hovertemplate:'%{y:.1f} km/h<extra></extra>'},
+    {x,y:idx.map(z=>val(h,'wind_gusts_10m',z.i)),type:'scatter',mode:'lines',name:'Rajada',line:{color:'#dc7e47',width:3},hovertemplate:'%{y:.1f} km/h<extra></extra>'},
+    {x,y:idx.map(()=>30),type:'scatter',mode:'lines',name:'Referência 30 km/h',line:{color:'#b44855',dash:'dash',width:1},hoverinfo:'skip'}],'km/h');
+  const labels=['N','NE','E','SE','S','SO','O','NO'];const sector=Array(8).fill(0),sum=Array(8).fill(0);
+  for(const row of idx){const d=num(val(h,'wind_direction_10m',row.i)),v=num(val(h,'wind_speed_10m',row.i));if(d!==null&&v!==null){const bucket=Math.round((((d%360)+360)%360)/45)%8;sector[bucket]++;sum[bucket]+=v;}}
+  if(sector.some(Boolean)){chart('wind-rose',[{type:'barpolar',r:sector,theta:labels.map((_,i)=>i*45),width:Array(8).fill(41),name:'Horas previstas',marker:{color:sum.map((s,i)=>sector[i]?s/sector[i]:0),colorscale:'Blues',showscale:true,colorbar:{title:'Vento médio<br>km/h'}},customdata:labels,hovertemplate:'Direção %{customdata}: %{r} hora(s)<extra></extra>'}],'',{
+     polar:{bgcolor:'#fff',angularaxis:{direction:'clockwise',rotation:90,tickmode:'array',tickvals:labels.map((_,i)=>i*45),ticktext:labels},radialaxis:{visible:true,gridcolor:'#e5eef4'}},height:370,margin:{l:24,r:70,t:16,b:16},hovermode:'closest'});
+  }else{$('wind-rose').textContent='Sem direção ou velocidade válida.';}
+ }else{['wind-plot','wind-rose'].forEach(id=>$(id).textContent='Previsão de vento indisponível.');}
+ const gusts=state?.gust_ensemble_daily||[];
+ if(gusts.length){let x=gusts.map(x=>ddmm(x.date));chart('gust-plot',[
+  {x,y:gusts.map(z=>z.p_gt_30_kmh*100),type:'bar',name:'>30 km/h',marker:{color:'#edb75e'},hovertemplate:'%{y:.0f}%<extra></extra>'},
+  {x,y:gusts.map(z=>z.p_gt_40_kmh*100),type:'bar',name:'>40 km/h',marker:{color:'#df7966'},hovertemplate:'%{y:.0f}%<extra></extra>'},
+  {x,y:gusts.map(z=>z.p_gt_60_kmh*100),type:'bar',name:'>60 km/h',marker:{color:'#bf4558'},hovertemplate:'%{y:.0f}%<extra></extra>'}
+ ],'Frequência (%)',{barmode:'group',yaxis:{title:'Frequência (%)',range:[0,100],gridcolor:'#edf2f6'}});
+ }else{$('gust-plot').textContent='Sem modelos com máximos diários de rajada válidos.';}
+ tableFill('gust-table',['Data','Modelos','Membros','Mediana km/h','P90 km/h','Freq. >30','Freq. >40','Freq. >60'],gusts.map(z=>`<tr><td>${ddmm(z.date)}</td><td>${z.model_count}</td><td>${z.member_count}</td>${cell(z.p50_kmh)}${cell(z.p90_kmh)}<td>${percent(z.p_gt_30_kmh)}</td><td>${percent(z.p_gt_40_kmh)}</td><td>${percent(z.p_gt_60_kmh)}</td></tr>`));
+ tableFill('wind-table',['Hora local','De onde sopra','Direção °','Médio km/h','Rajada km/h'],idx.map(z=>{let sp=val(h,'wind_speed_10m',z.i),gst=val(h,'wind_gusts_10m',z.i),dir=val(h,'wind_direction_10m',z.i);return `<tr><td>${dh(z.t)}</td><td>${esc(directionName(dir))}</td>${cell(dir,'',0)}${cell(sp,sp!==null&&(sp>10||sp<3)?'warn':'')}${cell(gst,gst>30?'bad':gst>25?'warn':'')}</tr>`;}));
+}
+function sprayAssessment(h,i,kind){
+ const get=k=>val(h,k,i),t=get('temperature_2m'),rh=get('relative_humidity_2m'),wind=get('wind_speed_10m'),gust=get('wind_gusts_10m'),vpd=get('vapour_pressure_deficit'),pr=get('precipitation'),dir=get('wind_direction_10m');
+ if([t,rh,wind,gust,vpd,pr,dir].some(x=>num(x)===null))return {cls:'na',label:'Indeterminado',reasons:['Variável essencial ausente']};
+ const reasons=[];
+ if(t>=30)reasons.push('T ≥30°C');if(rh<55)reasons.push('UR <55%');
+ if(wind<3)reasons.push('Vento <3 km/h; investigar inversão');
+ if(wind>10)reasons.push('Vento >10 km/h');
+ if(gust>25)reasons.push('Rajada >25 km/h');
+ if(pr>0.1)reasons.push('Chuva no horário');
+ const vpdLimit=kind==='herb'?1.2:kind==='insect'?1.4:1.5;
+ if(vpd>vpdLimit)reasons.push(`VPD >${vpdLimit.toFixed(1).replace('.',',')} kPa (triagem)`);
+ const future=(h.precipitation||[]).slice(i+1,i+4);
+ if(future.length===3&&future.every(x=>num(x)!==null)&&future.some(x=>x>0.1))reasons.push('Chuva nas próximas 3h');
+ if(reasons.length)return {cls:'bad',label:'Restrição meteorológica',reasons};
+ if(future.length!==3||future.some(x=>num(x)===null))return {cls:'na',label:'Indeterminado',reasons:['Chuva futura incompleta']};
+ return {cls:'warn',label:'Candidata / validar campo',reasons:['Inversão, bula e deriva não verificadas']};
+}
+function renderSpray(idx){
+ const h=state?.deterministic?.hourly||{},kind=$('product').value;
+ const all=idx.map(z=>({...z,...sprayAssessment(h,z.i,kind)}));
+ const windows=[];let run=[];
+ function flush(){if(run.length>=2){const a=run[0],b=run[run.length-1];windows.push({start:a.t,end:b.t,n:run.length,gust:Math.max(...run.map(x=>val(h,'wind_gusts_10m',x.i)??Infinity)),rh:Math.min(...run.map(x=>val(h,'relative_humidity_2m',x.i)??0))});}run=[];}
+ for(const z of all){if(z.cls==='warn')run.push(z);else flush();}flush();
+ windows.sort((a,b)=>b.n-a.n||a.gust-b.gust||a.start.localeCompare(b.start));
+ $('spray-windows').innerHTML=windows.length?windows.slice(0,3).map((w,i)=>`<div class="window"><strong>${i+1}º: ${dh(w.start)} — ${hh(w.end)}</strong><span>${w.n} horas candidatas consecutivas</span><small>UR mínima ${fmt(w.rh,0)}%; rajada máxima ${fmt(w.gust)} km/h. <b>Exige verificação local.</b></small></div>`).join(''):
+ '<div class="notice muted">Nenhuma janela consecutiva ≥2 horas passou pelos filtros meteorológicos disponíveis. Isso não prova que todas as demais horas sejam impraticáveis: faltam medições no talhão.</div>';
+ tableFill('spray-table',['Hora local','T °C','UR %','VPD kPa','Vento km/h','Rajada km/h','De onde sopra','Chuva mm/h','Triagem','Principal restrição'],all.map(z=>{
+  const t=val(h,'temperature_2m',z.i),rh=val(h,'relative_humidity_2m',z.i),vpd=val(h,'vapour_pressure_deficit',z.i),wind=val(h,'wind_speed_10m',z.i),gust=val(h,'wind_gusts_10m',z.i),pr=val(h,'precipitation',z.i);
+  const limit=kind==='herb'?1.2:kind==='insect'?1.4:1.5;
+  return `<tr><td>${esc(dh(z.t))}</td>${cell(t,t>=30?'bad':'')}${cell(rh,rh!==null&&rh<55?'bad':'',0)}${cell(vpd,vpd!=null&&vpd>limit?'bad':'',2)}${cell(wind,wind!=null&&(wind>10||wind<3)?'bad':'')}${cell(gust,gust!=null&&gust>25?'bad':'')}<td>${esc(directionName(val(h,'wind_direction_10m',z.i)))}</td>${cell(pr,pr!=null&&pr>0.1?'bad':'')}<td class="${z.cls}">${esc(z.label)}</td><td title="${esc(z.reasons.join('; '))}">${esc(z.reasons.join('; '))}</td></tr>`;
+ }),'Previsão de pulverização indisponível.');
+}
+function renderMachines(){const daily=dailyData();const items=(daily.time||[]).slice(0,14);if(!items.length){$('machine-rain').textContent='Dados diários indisponíveis para planejamento.';return;}
+ chart('machine-rain',[{type:'bar',x:items.map(ddmm),y:items.map((_,i)=>val(daily,'precipitation_sum',i)),name:'Chuva prevista',marker:{color:'#76b7d7'},hovertemplate:'%{y:.1f} mm<extra></extra>'}],'mm/dia');
+}
+function renderVerification(){const model=state?.ensemble_models||{};const items=Object.entries(model).sort((a,b)=>a[0].localeCompare(b[0]));
+ tableFill('model-inventory',['Modelo','Chuva: membros','Rajadas: membros','Latitude grade','Longitude grade','Disponibilidade'],items.map(([name,item])=>`<tr><td>${esc(name)}</td><td>${item.precipitation_members??'—'}</td><td>${item.gust_members??'—'}</td>${cell(item.grid_lat,'',3)}${cell(item.grid_lon,'',3)}<td class="${item.state==='ok'?'ok':'warn'}">${esc(item.state==='ok'?'Chuva válida':item.state==='error'?'Falha na fonte':'Sem chuva diária completa')}</td></tr>`));
 }
 function renderCalendar(){
- const nowLocal=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Campo_Grande',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
- const [yr,mo,da]=nowLocal.split('-').map(Number);
- const daily=state?.deterministic?.daily||{};
- const byDate=new Map((daily.time||[]).map((date,i)=>[date,i]));
- let html='';
- for(let i=0;i<30;i++){
-   // UTC midday avoids daylight-saving shifts when formatting calendar dates.
-   const date=new Date(Date.UTC(yr,mo-1,da+i,12));
-   const iso=date.toISOString().slice(0,10);
-   const d=byDate.get(iso);
-   const rain=d===undefined?null:val(daily,'precipitation_sum',d);
-   const mx=d===undefined?null:val(daily,'temperature_2m_max',d);
-   const label=rain===null&&mx===null?'Sem tendência validada':`☔ ${fmt(rain)} mm · ${fmt(mx,0)}°C`;
-   html+=`<div class="calday ${d===undefined?'missing':'available'}"><b>${esc(iso.slice(8))}/${esc(iso.slice(5,7))}</b><span>${label}</span><small>${d===undefined?'Sem dado':'Forecast determinístico'}</small></div>`;
+ const base=state?.issued_at_utc?new Date(state.issued_at_utc):new Date();
+ const start=localISO(base);
+ const daily=dailyData(),byDate=new Map((daily.time||[]).map((str,i)=>[str,i]));
+ const startUTC=Date.parse(start+'T12:00:00Z');
+ const mondayOffset=(new Date(startUTC).getUTCDay()+6)%7;
+ let cells=['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'].map(x=>`<div class="calhead">${x}</div>`);
+ for(let k=0;k<mondayOffset;k++)cells.push('<div class="calblank"></div>');
+ for(let k=0;k<30;k++){
+  const date=new Date(startUTC+k*86400000).toISOString().slice(0,10);
+  const i=byDate.get(date);
+  const rain=i==null?null:num(val(daily,'precipitation_sum',i)),tmax=i==null?null:num(val(daily,'temperature_2m_max',i));
+  const has=rain!==null||tmax!==null;
+  const cls=!has?'missing':rain>=15?'heavy':rain>=5?'wet':rain>=.1?'light':'dry';
+  const symbol=!has?'—':rain>=15?'🌧':rain>=5?'🌦':rain>=.1?'🌤':'☀';
+  cells.push(`<div class="calday ${cls}"><strong>${esc(ddmm(date))}</strong>${has?`<span>${symbol} ${fmt(rain)} mm</span><small>T máx ${fmt(tmax,0)} °C</small><small>Previsão determinística</small>`:'<span>Sem previsão diária</span><small>Não significa tempo seco</small>'}</div>`);
  }
- $('calendar').innerHTML=html;
+ $('calendar').innerHTML=cells.join('');
 }
-async function refresh(){const b=$('refresh');b.disabled=true;try{const res=await fetch(DATA_URL+'?t='+Date.now(),{cache:'no-store'});if(!res.ok)throw Error('HTTP '+res.status);state=await res.json();render();}catch(err){state=null;render();$('status').textContent='⚠️ Dados da coleta não encontrados. A execução automática no GitHub Pages pode estar pendente ou falhou: '+String(err);}finally{b.disabled=false;}}
-$('tabs').addEventListener('click',e=>{let button=e.target.closest('button[data-tab]');if(!button)return;document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('active',b===button));document.querySelectorAll('.tab').forEach(s=>s.classList.toggle('active',s.id===button.dataset.tab));});$('refresh').onclick=refresh;$('product').onchange=()=>{if(state)renderSpray()};refresh();setInterval(refresh,30*60*1000);
+function render(){
+ const d=state?.deterministic;
+ const {stale}=statusBar();
+ const idx=hoursFrom(d?.hourly,72);
+ const guards=[()=>renderOverview(idx),()=>renderRain(idx),()=>renderWind(idx),()=>renderSpray(idx),renderMachines,renderVerification,renderCalendar];
+ for(const f of guards){try{f();}catch(err){console.error('Render failure',err);}}
+ redrawActive();
+}
+async function refresh(){
+ const b=$('refresh');b.disabled=true;
+ try{const res=await fetch(DATA_URL+'?cache='+Date.now(),{cache:'no-store'});if(!res.ok)throw new Error('HTTP '+res.status);const data=await res.json();state=data;render();}
+ catch(err){if(!state){state=null;for(const el of document.querySelectorAll('.plot'))el.textContent='Não foi possível carregar os dados publicados.';}$('status').className='notice warning';$('status').textContent='⚠️ Não foi possível consultar a última coleta: '+String(err)+'. Não use dados desatualizados para operações.';}
+ finally{b.disabled=false;}
+}
+$('tabs').addEventListener('click',event=>{
+ const button=event.target.closest('button[data-tab]');if(!button)return;
+ document.querySelectorAll('#tabs button').forEach(x=>x.classList.toggle('active',x===button));
+ document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x.id===button.dataset.tab));
+ requestAnimationFrame(()=>requestAnimationFrame(redrawActive));
+});
+$('refresh').addEventListener('click',refresh);
+$('product').addEventListener('change',()=>{if(state)renderSpray(hoursFrom(state.deterministic?.hourly,72));});
+window.addEventListener('resize',()=>{if(window.Plotly)for(const el of document.querySelectorAll('.tab.active .js-plotly-plot'))Plotly.Plots.resize(el);});
+refresh();setInterval(refresh,30*60*1000);

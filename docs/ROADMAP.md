@@ -32,3 +32,10 @@
 - [ ] Integrações OpenWeather autorizadas, imagens com licença, alertas e e-mail
 
 **Etapa de aprovação:** cada módulo precisa funcionar em dados recentes, declarar lacunas e ser comparado com referência observacional antes de receber selo de confiança.
+
+
+## Concluído na v0.3
+- [x] Gráficos categoriais, dimensões responsivas e renderização quando aba está visível.
+- [x] Mistura de chuva com pesos iguais por modelo para 1/3/6h (amostras conjuntas).
+- [x] Comparação diária por modelo, rain probability thresholds, vento/rosa prevista e sumário agro.
+- [ ] Publicar v0.3 e validar primeiro job real no GitHub Actions.

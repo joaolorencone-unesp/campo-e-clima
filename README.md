@@ -2,9 +2,9 @@
 
 Painel agrometeorológico de pesquisa para **Naviraí–MS** (-23.065, -54.190; `America/Campo_Grande`, UTC-4).
 
-**Site proposto:** https://joaolorencone-unesp.github.io/campo-e-clima/
+**Site público:** https://joaolorencone-unesp.github.io/campo-e-clima/
 
-> **Estado:** primeira versão experimental. Dados meteorológicos apenas quando coletados de fontes reais; as frequências de ensemble ainda não estão calibradas contra observações locais. O sistema NÃO autoriza pulverização ou entrada de máquinas.
+> **Estado:** versão experimental 0.3. Dados meteorológicos apenas quando coletados de fontes reais; as frequências de ensemble ainda não estão calibradas contra observações locais. O sistema NÃO autoriza pulverização ou entrada de máquinas.
 
 ## Recursos entregues nesta versão
 
@@ -38,9 +38,10 @@ Abra http://localhost:8000. O coletor depende de acesso HTTPS às APIs Open-Mete
 
 ```
 .github/workflows/pages.yml   # agendamento e deploy
-scripts/collect.py           # Forecast + 8 ensembles de chuva
+scripts/collect.py           # Forecast + 8 ensembles (acumulados 1/3/6h e 7 dias)
 scripts/verify.py            # métricas de verificação
 tests/test_ensemble.py       # testes unitários
+tests/test_hourly.py         # janelas horárias e mistura por modelo
 site/index.html              # painel em abas
 site/static/app.js           # gráficos, atualização e informações
 site/static/styles.css       # tema claro responsivo
@@ -60,7 +61,7 @@ Dados ausentes permanecem ausentes, nunca `0`. Previsões determinísticas e mem
 Atribuição: [Open-Meteo](https://open-meteo.com/), dados condicionados aos respectivos termos; verifique licença e limites de uso em produção. A licença do código ainda precisa ser escolhida. Não exponha chaves de API no repositório público.
 
 
-## Particularidades da versão 0.2
+## Particularidades das versões anteriores (0.2)
 - Chuva **D0–D6**: quantis e frequências diárias sem calibração; número válido por modelo e dia.
 - Rajadas **D0–D6**: evento = máxima diária >30/>40/>60/>80 km/h, não soma de velocidades.
 - Temperatura, UR, vento, rajadas, pressão e chuva **determinísticos** disponíveis até onde a API responder; previsão diária até 14 dias.
@@ -68,3 +69,19 @@ Atribuição: [Open-Meteo](https://open-meteo.com/), dados condicionados aos res
 - Nowcasting oficial, imagens GOES/radar/raios, histórico Embrapa, calibração local e triagem probabilística conjunta de pulverização ainda estão em **desenvolvimento**, explicitamente identificados.
 - Coleta automática pelo GitHub Actions é **agendada, não garantida pontualmente**; status deve ser monitorado em Actions.
 - O GitHub Pages é público. Não armazene coordenadas sensíveis de talhões, segredos ou dados privados de produtores em commits públicos.
+
+
+## Versão 0.3 — interface de previsões multimodelo aprimorada
+
+- **Correção de datas**: todos os gráficos com rótulos diários/horários agora usam eixo `category` explícito, sem conversão errada para 2011.
+- **Correção de tamanho**: Plotly renderiza sob demanda quando a aba está visível, aproveitando toda a largura disponível.
+- **Chuva**: dispersão P10–P90, linha da mediana e média, gráficos separados de frequências >1/>5/>10/>20 mm/dia, comparação visual entre oito modelos e janelas 1h/3h/6h com frequências por membro conjunto.
+- **Vento**: horário, máximas diárias por ensemble e rosa de direções **previstas**, não observadas.
+- **Panorama**: seis indicadores e resumos automáticos derivados da coleta publicada; previsão futura de hoje e todas as 24h de amanhã.
+- **Pulverização**: triagem por categoria e ranking de períodos meteorologicamente candidatos, nunca autorização; restrições explicitadas célula a célula.
+- **Solo e histórico**: informação acessível, mas sem inventar índices não calibrados.
+- **Calendário**: até 14 dias determinísticos quando disponíveis e dias restantes rotulados indisponíveis, sem projeção inventada.
+
+Leia [ATUALIZAR_GITHUB_v03.md](ATUALIZAR_GITHUB_v03.md) antes de substituir arquivos.
+
+**Atenção:** a v0.3 mantém *integrações não implementadas*: dados oficiais observados (INMET/Embrapa), radar INPE, soil moisture dinâmico, calibração estatística de ensembles, precisão histórica e tendência subsazonal de 60 dias. Nenhum desses produtos é fingido como disponível.
