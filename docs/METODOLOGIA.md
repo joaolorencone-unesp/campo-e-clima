@@ -24,3 +24,15 @@ SoilGrids oferece atributos quase estáticos como argila, silte, areia e densida
 
 ## Publicação e auditoria
 O site informa coleta, modelo, unidade e valores disponíveis; não fabricará radar, alertas ou dados de 30–60 dias. APIs podem mudar variáveis, nomes e limites; testes de contrato são necessários.
+
+## v0.4 — joint-member meteorological screening (prototype)
+
+- A API consulta especificamente `precipitation`, `temperature_2m`, `relative_humidity_2m`, `wind_speed_10m`, `wind_direction_10m` e `wind_gusts_10m` em uma chamada de **4 dias por modelo**. Somente membros com todos os seis campos **identificados pelo mesmo sufixo** e chuva completa nas 3 horas seguintes entram na triagem probabilística. A requisição original de chuva D0-D6 permanece separada.
+- VPD calculado por membro a partir de `T` e `UR` pela equação da pressão de vapor de saturação de Tetens/FAO: `VPD = 0.6108*exp(17.27*T/(T+237.3))*(1-UR/100)` [kPa]. Não usar UR média ou temperatura de outro membro.
+- Filtros experimentais de triagem: vento 3–10 km/h, rajada ≤25 km/h, T<30°C, UR≥55%, chuva no horizonte 3h ≤0,1 mm, VPD <1,2 kPa (herbicida), <1,4 (inseticida), <1,5 (fungicida). **São filtros de engenharia para demonstrar o software, não limites universais ou validados cientificamente para estas classes de produtos.** Os valores deverão ser substituídos por critérios dependentes do produto, formulação, gotas, equipamento, deriva e bula.
+- Classes mutuamente exclusivas: `passa` (cumpre todos os filtros com margem), `marginal` (cumpre filtros mas próximo dos limites) ou `restrito` (viola ≥1 filtro). Nenhuma classe equivale a segurança garantida. Inversão, deriva para receptor e bula **não são verificadas**; classificação operacional permanece indeterminada.
+- Frequências são calculadas por membro **conjunto**, dividindo igualmente o peso por modelo e por seus membros disponíveis. Para janelas de 2 horas, o **mesmo membro** deve cumprir a condição nas duas horas. Não multiplicar probabilidades horárias ou marginais.
+- Contagens por hora e por categoria mostram amostras *conjuntas completas*, não contagens apenas da variável `wind_gusts_10m`. A disponibilidade de oito ensembles com rajadas não prova oito ensembles úteis para pulverização.
+- Guia DJI Agras T100: especificação de resistência de vento <6 m/s da aeronave não equivale a limite seguro de deriva. Manual ressalta operação sob <3 m/s para produtos sensíveis à deriva/fitotoxicidade. Fontes: https://ag.dji.com/t100/downloads e https://www.dji.com/support/product/t100 .
+- Segurança regulatória: https://www.gov.br/agricultura/pt-br/assuntos/insumos-agropecuarios/aviacao-agricola/fiscalizacao ; Portaria MAPA 298/2021. Verificar atualizações legislativas, regiões sensíveis e regras de rótulo/bula antes da aplicação.
+- Revisão sobre deposição/deriva de gotas UAV: Qin & Chen (2023), Scientific Reports 13, 14935: https://www.nature.com/articles/s41598-023-40556-0 .

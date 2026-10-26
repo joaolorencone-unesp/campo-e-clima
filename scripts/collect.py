@@ -12,6 +12,10 @@ import math
 import time
 from typing import Any
 import requests
+try:
+    from scripts.spraying import read_joint_members, mix_joint_hourly, mix_joint_windows2h
+except ModuleNotFoundError:  # CLI invocation: python scripts/collect.py
+    from spraying import read_joint_members, mix_joint_hourly, mix_joint_windows2h
 
 LAT, LON = -23.065, -54.190
 TZ = 'America/Campo_Grande'
@@ -268,10 +272,11 @@ def rain_models_comparison(by_model: dict[str,dict]) -> list[dict]:
 
 def main():
     recorded = dt.datetime.now(dt.timezone.utc).isoformat()
-    result: dict[str, Any] = {'schema_version': 2, 'issued_at_utc': recorded,
+    result: dict[str, Any] = {'schema_version': 3, 'issued_at_utc': recorded,
              'site': {'latitude': LAT, 'longitude': LON, 'timezone': TZ},
              'methodology': 'Equal total weight per valid ensemble model; uncalibrated member frequencies; forward 1/3/6h totals from joint member trajectories; interpolated hourly grids not independent measurements',
              'sources': {}, 'deterministic': None, 'rain_ensemble_daily': [], 'gust_ensemble_daily': [], 'rain_ensemble_hourly': [], 'rain_models_daily': [], 'ensemble_models': {},
+             'spray_joint_hourly': [], 'spray_joint_windows_2h': [], 'spray_joint_model_status': {},
              'warnings': []}
     try:
         f = forecast()
@@ -288,6 +293,7 @@ def main():
     by_model = {}
     by_model_hourly = {}
     by_model_gust = {}
+    by_model_spray = {}
     for name, code in MODELS.items():
         try:
             params = {**base_params(), 'models': code, 'hourly': 'precipitation,wind_gusts_10m'}
@@ -314,6 +320,25 @@ def main():
                 by_model_hourly[name] = hourly_rain
             if any(g['days'].values()):
                 by_model_gust[name] = g
+            # Separate 4-day request avoids duplicating huge 7-day member arrays.
+            # Not all models have all spraying inputs. Missing => excluded,
+            # NEVER classified as meteorologically favorable.
+            try:
+                spray_params = {**base_params(), 'forecast_days': 4,
+                                'hourly': ','.join(['precipitation','temperature_2m',
+                                  'relative_humidity_2m','wind_speed_10m',
+                                  'wind_direction_10m','wind_gusts_10m'])}
+                spray = fetch(ENSEMBLE_URL, {**spray_params, 'models': code})
+                joint = read_joint_members(spray)
+                result['spray_joint_model_status'][name] = {
+                    'member_fields_complete':joint['members_available'],
+                    'member_hour_available':sum(len(x) for x in joint['times'].values()),
+                    'status':'ok' if joint['times'] else 'sem_membros_conjuntos_validos'}
+                if joint['times']:by_model_spray[name] = joint
+            except Exception as spray_err:
+                result['spray_joint_model_status'][name] = {
+                    'status':'indisponivel', 'detail':str(spray_err)[:180],
+                    'member_fields_complete':0}
         except Exception as exc:
             result['ensemble_models'][name] = {'code': code, 'state': 'error', 'detail': str(exc)[:220]}
         time.sleep(.2)
@@ -321,6 +346,10 @@ def main():
     result['rain_ensemble_hourly'] = mix_hourly_rain(by_model_hourly)
     result['rain_models_daily'] = rain_models_comparison(by_model)
     result['gust_ensemble_daily'] = mix_gust_days(by_model_gust)
+    result['spray_joint_hourly'] = mix_joint_hourly(by_model_spray)
+    result['spray_joint_windows_2h'] = mix_joint_windows2h(by_model_spray)
+    if not result['spray_joint_hourly']:
+        result['warnings'].append('No ensemble has all six variables aligned by member for spraying: no joint screening frequencies')
     if not result['rain_ensemble_daily']:
         result['warnings'].append('No complete member/day precipitation sample; ensemble chart unavailable')
     if not result['gust_ensemble_daily']:

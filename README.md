@@ -4,7 +4,7 @@ Painel agrometeorológico de pesquisa para **Naviraí–MS** (-23.065, -54.190; 
 
 **Site público:** https://joaolorencone-unesp.github.io/campo-e-clima/
 
-> **Estado:** versão experimental 0.3. Dados meteorológicos apenas quando coletados de fontes reais; as frequências de ensemble ainda não estão calibradas contra observações locais. O sistema NÃO autoriza pulverização ou entrada de máquinas.
+> **Estado:** versão experimental 0.4. Dados meteorológicos apenas quando coletados de fontes reais; as frequências de ensemble ainda não estão calibradas contra observações locais. O sistema NÃO autoriza pulverização ou entrada de máquinas.
 
 ## Recursos entregues nesta versão
 
@@ -85,3 +85,18 @@ Atribuição: [Open-Meteo](https://open-meteo.com/), dados condicionados aos res
 Leia [ATUALIZAR_GITHUB_v03.md](ATUALIZAR_GITHUB_v03.md) antes de substituir arquivos.
 
 **Atenção:** a v0.3 mantém *integrações não implementadas*: dados oficiais observados (INMET/Embrapa), radar INPE, soil moisture dinâmico, calibração estatística de ensembles, precisão histórica e tendência subsazonal de 60 dias. Nenhum desses produtos é fingido como disponível.
+
+## Versão 0.4 — análise científica e triagem probabilística (26/10/2026)
+
+- [x] Novo módulo `scripts/spraying.py`: cenários de pulverização **meteorológicos**, calculados conjuntamente em membros completos de ensembles. Um ensemble com rajada mas sem direção, UR ou temperatura **não** entra na amostra conjunta.
+- [x] Frequências meteorológicas por categoria e por hora, causas simultâneas de restrição e janelas de 2 horas utilizando **a mesma trajetória de membro**. Fórmula do VPD documentada.
+- [x] 3 gráficos interativos adicionais e tabela probabilística por hora na aba **Pulverização**; mantém tabela determinística como complemento.
+- [x] Fonte Embrapa identificada e documentada: estação Naviraí 6, registros desde 01/12/2024, 381m. A exportação histórica ainda depende de coleta e QC; **sem inventar dados observados**.
+- [x] O workflow adiciona arquivos de auditoria de previsão como artifacts de **retenção limitada a 90 dias**, não solução histórica permanente.
+- [x] Testes da associação por membro, do peso por modelo, de 2h consecutivas, de chuva seguinte 3h e de ausência de dados.
+- [ ] Validação operacional do endpoint Open-Meteo no GitHub Actions (sem conectividade API neste ambiente de produção de ZIP).
+- [ ] Backtesting contra séries auditadas, calibração de Brier/CRPS e comparação de oito vs menor conjunto; testes de dependência institucional.
+
+Apenas **frequência de passagem por filtros meteorológicos experimentais**, não probabilidade de aplicação segura. Sempre aplicar legislação/bula, medição local, avaliação de inversão/deriva, segurança de pessoas/polinizadores e especificações do DJI Agras T100.
+
+Leia [Verificação e Embrapa](docs/VERIFICACAO_E_EMBRAPA.md).

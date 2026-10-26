@@ -221,6 +221,65 @@ function renderSpray(idx){
   return `<tr><td>${esc(dh(z.t))}</td>${cell(t,t>=30?'bad':'')}${cell(rh,rh!==null&&rh<55?'bad':'',0)}${cell(vpd,vpd!=null&&vpd>limit?'bad':'',2)}${cell(wind,wind!=null&&(wind>10||wind<3)?'bad':'')}${cell(gust,gust!=null&&gust>25?'bad':'')}<td>${esc(directionName(val(h,'wind_direction_10m',z.i)))}</td>${cell(pr,pr!=null&&pr>0.1?'bad':'')}<td class="${z.cls}">${esc(z.label)}</td><td title="${esc(z.reasons.join('; '))}">${esc(z.reasons.join('; '))}</td></tr>`;
  }),'Previsão de pulverização indisponível.');
 }
+
+// v0.4 — ensemble scenarios are JOINT within the SAME member, not a product
+// of separate probabilities; all percentages are uncalibrated frequencies.
+const SPRAY_REASONS = {'vento':'Vento fora de 3–10 km/h','rajadas':'Rajadas >25 km/h',
+  'umidade':'UR <55%','temperatura':'T ≥30°C','vpd':'VPD acima da triagem',
+  'chuva_3h':'Chuva nas próximas 3h'};
+const SCREEN_KIND = {herb:'Herbicidas',fung:'Fungicidas',insect:'Inseticidas'};
+const SPRAY_COLORS={passa:'#1e9c74',marginal:'#e8a842',restrito:'#d45b60'};
+function ensembleScreening(){
+ const kind=$('product').value;
+ const live=state?.spray_joint_hourly||[];
+ const now=Date.now()-3600000;
+ const all=live.filter(r=>Number.isFinite(new Date(r.time+'-04:00').getTime()) && new Date(r.time+'-04:00').getTime()>=now);
+ const valid=all.filter(r=>r[kind]?.models>0).slice(0,72);
+ const modelStatuses=Object.values(state?.spray_joint_model_status||{});
+ const modelsOK=modelStatuses.filter(x=>x.status==='ok');
+ const pstatus=$('spray-ensemble-status');
+ if(!valid.length){
+  pstatus.className='notice warning';
+  pstatus.innerHTML='<b>Não há amostra conjunta completa dos ensembles para pulverização.</b> São necessárias as mesmas variáveis e o mesmo identificador de membro. A previsão determinística abaixo continua disponível apenas como referência; <b>não estima probabilidade de cenário.</b>';
+  for(const id of ['spray-prob-plot','spray-causes-plot','spray-2h-plot']) {chartSpecs.delete(id);$(id).textContent='Sem amostra conjunta verificada; não foi atribuída probabilidade.';}
+  $('spray-scenario-cards').innerHTML='';$('spray-best2h').innerHTML='';
+  tableFill('spray-ensemble-table',['Hora','Modelos','Membros','Passa','Marginal','Restrita'],[],'Nenhum membro com todos os campos necessários nesta coleta.');
+  return;
+ }
+ pstatus.className='notice muted';
+ const allModels=[...new Set(valid.map(z=>z[kind].models))];
+ const allMembers=[...new Set(valid.map(z=>z[kind].members))];
+ pstatus.innerHTML=`<strong>${modelsOK.length} de 8 modelos</strong> forneceram pelo menos uma hora com membros completos. Amostra conjunta por hora: <strong>${allModels.join('–')} modelos</strong> e <strong>${allMembers.join('–')} membros</strong>. VPD calculado por temperatura e UR do mesmo membro (equação FAO). <strong>Amostra válida não significa aplicação liberada.</strong>`;
+ const cards=valid.slice(0,1).map(r=>r[kind]);
+ const first=cards[0];
+ $('spray-scenario-cards').innerHTML=[['Passa triagem',first.passa,'#1e9c74'],['Marginal',first.marginal,'#d28b22'],['Restrita',first.restrito,'#c24f54']].map(([label,p,color])=>`<div class="screen-metric"><small>${esc(label)} • ${esc(dh(valid[0].time))}</small><strong style="color:${color}">${percent(p)}</strong><span>Frequência entre ${first.members} membros completos</span></div>`).join('');
+ // Reduce the display density, not the numerical samples.
+ const sample=valid.filter((r,i)=>i%3===0), x=sample.map(r=>dh(r.time));
+ chart('spray-prob-plot',['passa','marginal','restrito'].map(cls=>({
+  type:'bar',x,y:sample.map(r=>(r[kind]?.[cls]??0)*100),name:cls==='passa'?'Passa filtro':cls==='marginal'?'Marginal':'Restrita',
+  marker:{color:SPRAY_COLORS[cls]},hovertemplate:'%{y:.1f}% dos membros<extra></extra>'
+ })),'Frequência conjunta (%)',{barmode:'stack',yaxis:{title:'Frequência (%)',range:[0,100],gridcolor:'#edf2f6'}});
+ const keyColors={'vento':'#0a85ae','rajadas':'#d3872b','umidade':'#b75267','vpd':'#9a67b8','chuva_3h':'#4e8e63','temperatura':'#dd735d'};
+ chart('spray-causes-plot',Object.keys(keyColors).map(reason=>({type:'scatter',mode:'lines+markers',
+  x,y:sample.map(r=>(r[kind]?.reasons?.[reason]??0)*100),name:SPRAY_REASONS[reason],
+  line:{color:keyColors[reason],width:2.5},marker:{size:5},hovertemplate:'%{y:.1f}% dos membros<extra></extra>'
+ })),'Frequência por motivo (%)',{yaxis:{title:'Frequência (%)',range:[0,100],gridcolor:'#edf2f6'}});
+ const windows=(state?.spray_joint_windows_2h||[]).filter(r=>new Date(r.start+'-04:00').getTime()>=now && r[kind]?.models>0).slice(0,72);
+ const sampledWindows=windows.filter((r,i)=>i%2===0);
+ if(sampledWindows.length){chart('spray-2h-plot',[
+  {type:'bar',x:sampledWindows.map(r=>dh(r.start)),y:sampledWindows.map(r=>r[kind].passa*100),name:'Ambas as horas passam',marker:{color:SPRAY_COLORS.passa}},
+  {type:'bar',x:sampledWindows.map(r=>dh(r.start)),y:sampledWindows.map(r=>r[kind].marginal*100),name:'Pelo menos uma hora marginal',marker:{color:SPRAY_COLORS.marginal}},
+  {type:'bar',x:sampledWindows.map(r=>dh(r.start)),y:sampledWindows.map(r=>r[kind].restrito*100),name:'Pelo menos uma hora restrita',marker:{color:SPRAY_COLORS.restrito}}
+ ],'Frequência nas 2h (%)',{barmode:'stack',yaxis:{title:'Frequência (%)',range:[0,100],gridcolor:'#edf2f6'}});
+ }else {chartSpecs.delete('spray-2h-plot');$('spray-2h-plot').textContent='Sem duas horas consecutivas com membros completos.';}
+ const top=windows.filter(r=>r[kind].passa>0).sort((a,b)=>b[kind].passa-a[kind].passa || b[kind].models-a[kind].models || a.start.localeCompare(b.start)).slice(0,3);
+ $('spray-best2h').innerHTML=top.length?top.map((r,i)=>`<div class="window"><strong>${i+1}ª • ${esc(dh(r.start))}–${esc(hh(r.end))}</strong><b class="ok">${percent(r[kind].passa)} passam os filtros nas 2h</b><small>Marginal ${percent(r[kind].marginal)}, restrita ${percent(r[kind].restrito)}; ${r[kind].models} modelos, ${r[kind].members} membros. <strong>Exige verificação local.</strong></small></div>`).join(''):'<div class="notice muted">Nenhuma janela de 2 horas teve membros passando conjuntamente os filtros meteorológicos. A falta de dados não pode ser convertida em favorabilidade.</div>';
+ const rows=valid.map(r=>{const o=r[kind];const major=Object.entries(o.reasons||{}).sort((a,b)=>b[1]-a[1]).slice(0,2).map(([k,p])=>SPRAY_REASONS[k]+' ('+percent(p)+')').join('; ');
+  return `<tr><td>${esc(dh(r.time))}</td><td>${o.models}</td><td>${o.members}</td><td class="ok">${percent(o.passa)}</td><td class="warn">${percent(o.marginal)}</td><td class="bad">${percent(o.restrito)}</td><td>${esc(major||'Sem restrições meteorológicas nos membros classificados; outras condições não verificadas')}</td></tr>`;
+ });
+ tableFill('spray-ensemble-table',['Hora','Modelos','Membros','Passa filtros','Marginal','Restrita','Motivos mais frequentes'],rows);
+}
+
 function renderMachines(){const daily=dailyData();const items=(daily.time||[]).slice(0,14);if(!items.length){$('machine-rain').textContent='Dados diários indisponíveis para planejamento.';return;}
  chart('machine-rain',[{type:'bar',x:items.map(ddmm),y:items.map((_,i)=>val(daily,'precipitation_sum',i)),name:'Chuva prevista',marker:{color:'#76b7d7'},hovertemplate:'%{y:.1f} mm<extra></extra>'}],'mm/dia');
 }
@@ -250,7 +309,7 @@ function render(){
  const d=state?.deterministic;
  const {stale}=statusBar();
  const idx=hoursFrom(d?.hourly,72);
- const guards=[()=>renderOverview(idx),()=>renderRain(idx),()=>renderWind(idx),()=>renderSpray(idx),renderMachines,renderVerification,renderCalendar];
+ const guards=[()=>renderOverview(idx),()=>renderRain(idx),()=>renderWind(idx),()=>renderSpray(idx),ensembleScreening,renderMachines,renderVerification,renderCalendar];
  for(const f of guards){try{f();}catch(err){console.error('Render failure',err);}}
  redrawActive();
 }
@@ -267,6 +326,6 @@ $('tabs').addEventListener('click',event=>{
  requestAnimationFrame(()=>requestAnimationFrame(redrawActive));
 });
 $('refresh').addEventListener('click',refresh);
-$('product').addEventListener('change',()=>{if(state)renderSpray(hoursFrom(state.deterministic?.hourly,72));});
+$('product').addEventListener('change',()=>{if(state){renderSpray(hoursFrom(state.deterministic?.hourly,72));ensembleScreening();}});
 window.addEventListener('resize',()=>{if(window.Plotly)for(const el of document.querySelectorAll('.tab.active .js-plotly-plot'))Plotly.Plots.resize(el);});
 refresh();setInterval(refresh,30*60*1000);

@@ -34,6 +34,16 @@ jobs:
         run: python -m pytest -q
       - name: Collect forecasts
         run: python scripts/collect.py
+      # Temporary audit snapshots for future forecast verification; NOT permanent storage.
+      # GitHub artifact retention is limited. Move to durable object storage later.
+      - name: Archive collected forecast snapshot (up to 90 days)
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: forecast-${{ github.run_id }}
+          path: site/data/latest.json
+          retention-days: 90
+          if-no-files-found: error
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:
