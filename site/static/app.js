@@ -155,6 +155,12 @@ function renderOverview(idx){
 }
 function renderRain(idx){
  const rain=state?.rain_ensemble_daily||[];
+ // Do not show a wall of empty cards when custom-location ensemble samples fail.
+ // Keep Forecast API graphs visible, but no fake multimodel percentages.
+ for(const id of ['rain-window-table','rain-models-plot','rain-table']){
+  const panel=$(id)?.closest('article.panel');
+  if(panel)panel.hidden=Boolean(state?.site?.custom && !rain.length);
+ }
  const x=rain.map(z=>ddmm(z.date));
  if(rain.length){
    chart('rain-plot',[
@@ -165,7 +171,18 @@ function renderRain(idx){
    ],'Chuva (mm/dia)');
    const thresholds=[[1,'#66bbcc'],[5,'#448dc6'],[10,'#e4a354'],[20,'#ba526b']];
    chart('rain-risk-plot',thresholds.map(([n,c])=>({x,y:rain.map(z=>z['p_gt_'+n+'_mm']*100),type:'scatter',mode:'lines+markers',name:'>'+n+' mm/dia',line:{color:c,width:2.5},marker:{size:7},hovertemplate:'%{y:.0f}%<extra></extra>'})),'Frequência (%)',{yaxis:{range:[0,100],title:'Frequência (%)',gridcolor:'#edf2f6'}});
- }else{['rain-plot','rain-risk-plot'].forEach(id=>$(id).textContent='Sem distribuição validada de chuva nesta coleta.');}
+ }else if(state?.site?.custom){
+  // Transparent fallback: Forecast API values are NOT multimodel ensemble frequencies.
+  const d=dailyData(),dates=(d.time||[]).slice(0,7).map(ddmm),rainfall=(d.precipitation_sum||[]).slice(0,7),chance=(d.precipitation_probability_max||[]).slice(0,7);
+  if(dates.length&&rainfall.some(v=>num(v)!==null))chart('rain-plot',[
+   {x:dates,y:rainfall,type:'bar',name:'Previsão determinística • mm/dia',marker:{color:'#5aa8d1'},hovertemplate:'%{y:.1f} mm • previsão determinística<extra></extra>'}
+  ],'Chuva determinística (mm/dia)');
+  else clearPlot('rain-plot','Sem dados numéricos válidos de precipitação.');
+  if(dates.length&&chance.some(v=>num(v)!==null))chart('rain-risk-plot',[
+   {x:dates,y:chance,type:'bar',name:'Maior chance horária no dia • Forecast API',marker:{color:'#e6a45d'},hovertemplate:'%{y:.0f}% • máximo horário do dia (não chance diária)<extra></extra>'}
+  ],'Maior probabilidade horária no dia (%)',{yaxis:{range:[0,100],title:'Maior chance horária (%)',gridcolor:'#edf2f6'}});
+  else clearPlot('rain-risk-plot','Sem probabilidade horária de precipitação disponível na previsão determinística.');
+ }else{['rain-plot','rain-risk-plot'].forEach(id=>clearPlot(id,'Sem distribuição validada de chuva nesta coleta.'));}
  const titles=['Dia','Modelos','Membros','Média mm','P10','P50','P90','>1 mm','>5 mm','>10 mm','>20 mm'];
  tableFill('rain-table',titles,rain.map(z=>`<tr><td>${esc(ddmm(z.date))}</td><td>${z.model_count}</td><td>${z.member_count}</td>${cell(z.mean_mm)}${cell(z.p10_mm)}${cell(z.p50_mm)}${cell(z.p90_mm)}<td>${percent(z.p_gt_1_mm)}</td><td>${percent(z.p_gt_5_mm)}</td><td>${percent(z.p_gt_10_mm)}</td><td>${percent(z.p_gt_20_mm)}</td></tr>`));
  const hr=state?.rain_ensemble_hourly||[];
@@ -175,7 +192,14 @@ function renderRain(idx){
      {x:rx,y:forward.map(z=>z.windows?.['1']?.mean_mm??null),type:'bar',name:'Média mm/h',marker:{color:'#76b7df'},hovertemplate:'%{y:.2f} mm/h<extra></extra>'},
      {x:rx,y:forward.map(z=>num(z.windows?.['1']?.p_gt_1_mm)!=null?z.windows['1'].p_gt_1_mm*100:null),type:'scatter',mode:'lines',name:'Freq. >1 mm/h',yaxis:'y2',line:{color:'#c85f51',width:2.4},hovertemplate:'%{y:.0f}%<extra></extra>'}
    ],'Chuva (mm/h)',{yaxis2:{title:'Frequência (%)',overlaying:'y',side:'right',range:[0,100],showgrid:false}});
- }else{$('rain-hour-prob').textContent='Sem membros horários válidos; os acumulados diários ainda podem estar disponíveis.';}
+ }else if(state?.site?.custom){
+  const h=state?.deterministic?.hourly||{};
+  if(idx.length){const labels=idx.map(row=>dh(row.t));
+   const traces=[{x:labels,y:idx.map(row=>val(h,'precipitation',row.i)),type:'bar',name:'Previsão determinística mm/h',marker:{color:'#6eb3db'}}];
+   if(Array.isArray(h.precipitation_probability))traces.push({x:labels,y:idx.map(row=>val(h,'precipitation_probability',row.i)),type:'scatter',mode:'lines',name:'Probabilidade horária • Forecast API (NÃO ensemble)',yaxis:'y2',line:{color:'#c65f51',width:2}});
+   chart('rain-hour-prob',traces,'Chuva prevista (mm/h)',{yaxis2:{title:'Chance horária da Forecast API (%)',overlaying:'y',side:'right',range:[0,100],showgrid:false}});
+  }else clearPlot('rain-hour-prob','Previsão horária indisponível.');
+ }else{clearPlot('rain-hour-prob','Sem membros horários válidos; os acumulados diários ainda podem estar disponíveis.');}
  const windows=[];
  // Show timestamps at 3-hour intervals to avoid double-counting overlapping windows in a table.
  for(const o of forward){if(Number(o.time.slice(11,13))%3!==0)continue;
@@ -360,7 +384,7 @@ function renderMachines(){const daily=dailyData();const items=(daily.time||[]).s
  chart('machine-rain',[{type:'bar',x:items.map(ddmm),y:items.map((_,i)=>val(daily,'precipitation_sum',i)),name:'Chuva prevista',marker:{color:'#76b7d7'},hovertemplate:'%{y:.1f} mm<extra></extra>'}],'mm/dia');
 }
 function renderVerification(){const model=state?.ensemble_models||{};const items=Object.entries(model).sort((a,b)=>a[0].localeCompare(b[0]));
- tableFill('model-inventory',['Modelo','Chuva: membros','Rajadas: membros','Latitude grade','Longitude grade','Disponibilidade'],items.map(([name,item])=>`<tr><td>${esc(name)}</td><td>${item.precipitation_members??'—'}</td><td>${item.gust_members??'—'}</td>${cell(item.grid_lat,'',3)}${cell(item.grid_lon,'',3)}<td class="${item.state==='ok'?'ok':'warn'}">${esc(item.state==='ok'?'Chuva válida':item.state==='error'?'Falha na fonte':'Sem chuva diária completa')}</td></tr>`));
+ tableFill('model-inventory',['Modelo','Chuva: membros','Rajadas: membros','Latitude grade','Longitude grade','Disponibilidade'],items.map(([name,item])=>`<tr><td>${esc(name)}</td><td>${item.precipitation_members??'—'}</td><td>${item.gust_members??'—'}</td>${cell(item.grid_lat,'',3)}${cell(item.grid_lon,'',3)}<td class="${item.state==='ok'?'ok':'warn'}" title="${esc(item.detail||'')}">${esc(item.state==='ok'?'Chuva válida':item.state==='error'?('Falha: '+(item.detail||'não especificada')):'Sem chuva diária completa')}</td></tr>`));
 }
 
 function renderOfficial(){

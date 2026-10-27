@@ -25,7 +25,9 @@ def test_unique_identifiers_and_every_tab_exists():
 
 def test_modules_loaded_in_order_and_no_leaked_credentials():
     html=(BASE/'site/index.html').read_text(encoding='utf-8')
-    assert html.index('static/app.js?v=13') < html.index('static/location.js?v=10') < html.index('static/history_v10.js?v=13')
+    assert re.search(r'static/app\.js\?v=\d+',html)
+    assert re.search(r'static/location\.js\?v=\d+',html)
+    assert html.index('static/app.js?') < html.index('static/location.js?') < html.index('static/history_v10.js?')
     contents='\n'.join(p.read_text(encoding='utf-8') for p in (BASE/'site/static/location.js', BASE/'site/static/app.js',BASE/'site/index.html'))
     assert 'OPENWEATHER_API_KEY=' not in contents
     assert re.search(r'AIzaSy[A-Za-z0-9_-]{30}',contents) is None

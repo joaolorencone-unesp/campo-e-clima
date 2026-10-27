@@ -1,5 +1,5 @@
 'use strict';
-/** Campo e Clima v0.9 — free coordinate-specific browser data.
+/** Campo e Clima v1.5 — validated, staged coordinate-specific ensemble collection.
  * Static GitHub Pages cannot run server jobs or proxy providers. ALL remote requests
  * happen in the visitor's browser, with no credentials and with provenance controls.
  */
@@ -48,7 +48,14 @@ function updateLocationUI(){
  if(typeof window.dispatchEvent==='function' && typeof CustomEvent==='function')window.dispatchEvent(new CustomEvent('campo:location-changed',{detail:{...loc}}));
  const active=document.querySelector('.tab.active');if(active?.id==='observations'&&custom)document.querySelector('#tabs button[data-tab="overview"]').click();
 }
-async function getJSON(url,seconds=40){const ctrl=new AbortController();const timer=setTimeout(()=>ctrl.abort(),seconds*1000);try{const r=await fetch(url,{signal:ctrl.signal,cache:'no-store'});if(!r.ok)throw Error(`HTTP ${r.status}`);const value=await r.json();if(value?.error)throw Error(value.reason||'API retornou erro');return value;}finally{clearTimeout(timer);}}
+async function getJSON(url,seconds=40,cachePolicy='default'){
+ const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),seconds*1000);
+ try{
+  const r=await fetch(url,{signal:ctrl.signal,cache:cachePolicy});
+  if(!r.ok){const error=Error(`HTTP ${r.status}`);error.status=r.status;error.retryAfter=r.headers?.get?.('retry-after')||null;throw error;}
+  const value=await r.json();if(value?.error)throw Error(value.reason||'API retornou erro');return value;
+ }finally{clearTimeout(timer);}
+}
 function describeError(e){const t=String(e?.message||e||'erro desconhecido');if(e?.name==='AbortError')return 'Tempo limite excedido';if(t.includes('Failed to fetch')||t.includes('NetworkError'))return 'Rede, CORS ou serviço indisponível';return t.slice(0,120);}
 async function requestForecast(point){
  const params={latitude:point.latitude,longitude:point.longitude,timezone:'auto',forecast_days:'14',hourly:FORECAST_HOURLY.join(','),daily:FORECAST_DAILY.join(','),current:FORECAST_CURRENT.join(',')};
@@ -169,24 +176,102 @@ function summarizeEnsembles(results){
  }if(Object.keys(row.windows).length)rainH.push(row);}
  return {rain_ensemble_daily:rainD,gust_ensemble_daily:gustD,rain_ensemble_hourly:rainH,ensemble_models:models,rain_models_daily:comparison,spray_joint_hourly:mixJointEvent(sprayModels,'hour'),spray_joint_windows_2h:mixJointEvent(sprayModels,'window'),spray_joint_model_status:sprayStatuses};
 }
-async function requestEnsembles(point,token){
- const entries=Object.entries(MODELS),results={};let cursor=0;
- const worker=async()=>{while(cursor<entries.length){const [name,code]=entries[cursor++];if(token!==generation)return;
-  const params={latitude:point.latitude,longitude:point.longitude,timezone:'auto',forecast_days:7,models:code,hourly:'precipitation,wind_gusts_10m'};
-  try{let data;try{data=await getJSON(pars(OM_ENSEMBLE,params),36);}catch(e){data=await getJSON(pars(OM_ENSEMBLE,{...params,hourly:'precipitation'}),36);}
-   if(token!==generation)return;
-   results[name]={payload:data,computed:computeModel(data)};
-   try{
-    const sprayVars=JOINT_KEYS.join(',');
-    const joint=await getJSON(pars(OM_ENSEMBLE,{...params,forecast_days:4,hourly:sprayVars}),36);
-    if(token!==generation)return;
-    results[name].spray=readJoint(joint);
-   }catch(e){results[name].sprayError=describeError(e);}
-  }catch(e){results[name]={error:describeError(e)};}
-  if(token===generation)show(`Previsão carregada. Ensembles: ${Object.keys(results).length}/8 consultados (podem demorar).`,'info');
- }};
- await Promise.all([worker(),worker(),worker()]);return results;
+// Consultas por coordenada: primeiro chuva, depois variáveis adicionais.
+// NÃO iniciar 8 consultas complexas de pulverização antes de mostrar os cenários de chuva.
+// Cada resultado válido é publicado progressivamente; falhas não se tornam cache "verde".
+const ENSEMBLE_PRIORITY=['ECMWF IFS','NOAA GEFS','DWD ICON','ECMWF AIFS',
+ 'NOAA AI-GEFS','GEM Canada','UKMO','Google WeatherNext2'];
+const SPRAY_PRIORITY=['ECMWF IFS','NOAA GEFS','UKMO'];
+let sprayRunKey=null, sprayBusy=false, sprayLastAttempt={key:null,at:0}, ensembleFailureCooldown={key:null,at:0};
+function validEnsembleCount(data){return Object.values(data?.ensemble_models||{})
+ .filter(x=>x.state==='ok'&&x.precipitation_members>0).length;}
+function setEnsembleStatus(message,kind='info'){
+ const el=$('custom-ensemble-status');if(!el)return;
+ el.hidden=!loc.custom;el.className='notice '+(kind==='error'?'warning':kind==='good'?'':'muted');el.textContent=message;
 }
+function usableModelRain(payload){
+ if(!Array.isArray(payload?.hourly?.time)||payload.hourly.time.length<24)return null;
+ const computed=computeModel(payload);
+ return Object.keys(computed.r).length?computed:null;
+}
+async function requestEnsembles(point,token,onProgress=()=>{}){
+ const results={},entries=ENSEMBLE_PRIORITY.map(name=>[name,MODELS[name]]);let cursor=0;
+ let cancelledByLimit=false;
+ const worker=async()=>{
+  while(cursor<entries.length){
+   if(token!==generation||cancelledByLimit)return;
+   const [name,code]=entries[cursor++];
+   const params={latitude:point.latitude,longitude:point.longitude,timezone:'auto',
+    forecast_days:7,models:code,hourly:'precipitation'};
+   try{
+    let data,computed;
+    try{
+     data=await getJSON(pars(OM_ENSEMBLE,params),25);
+     computed=usableModelRain(data);
+     if(!computed)throw Error('Resposta sem 24 horas completas de chuva por membro');
+    }catch(e){
+     // Retry only a smaller horizon when the request times out; never hammer HTTP 429.
+     if(e.name!=='AbortError')throw e;
+     data=await getJSON(pars(OM_ENSEMBLE,{...params,forecast_days:4}),17);
+     computed=usableModelRain(data);
+     if(!computed)throw Error('Consulta reduzida sem chuva válida');
+    }
+    if(token!==generation)return;
+    results[name]={payload:data,computed};
+   }catch(e){
+    if(token!==generation)return;
+    if(e.status===429)cancelledByLimit=true;
+    results[name]={error:describeError(e)};
+   }
+   if(token===generation)onProgress(name,results,entries.length,cancelledByLimit);
+  }
+ };
+ await Promise.all([worker(),worker()]);
+ if(cancelledByLimit){for(const [name] of entries)if(!results[name])results[name]={error:'Consulta interrompida após HTTP 429 (limite de acesso gratuito)'};}
+ return results;
+}
+async function requestSprayEnsembles(point,token,key){
+ if(sprayBusy && sprayRunKey===key)return;
+ if(token!==generation||!state||!loc.custom)return;
+ if(sprayLastAttempt.key===key && Date.now()-sprayLastAttempt.at<10*60*1000 && !(state.spray_joint_hourly||[]).length){
+  return; // avoid repeatedly hitting a rate-limited provider on every tab click
+ }
+ sprayBusy=true;sprayRunKey=key;sprayLastAttempt={key,at:Date.now()};
+ setEnsembleStatus('Ensembles de chuva disponíveis. Consultando separadamente as variáveis conjuntas de pulverização (somente modelos prioritários)…');
+ const byModel={},statuses={},gusts={};
+ try{
+  for(const name of SPRAY_PRIORITY){
+   if(token!==generation)return;
+   try{
+    const params={latitude:point.latitude,longitude:point.longitude,timezone:'auto',
+      forecast_days:4,models:MODELS[name],hourly:JOINT_KEYS.join(',')};
+    const payload=await getJSON(pars(OM_ENSEMBLE,params),27);
+    if(token!==generation)return;
+    const spray=readJoint(payload),computed=computeModel(payload);
+    if(Object.keys(spray.times).length){byModel[name]=spray;statuses[name]={status:'ok',member_fields_complete:spray.members_available};}
+    else statuses[name]={status:'indisponivel',detail:'sem membros conjuntos completos'};
+    if(Object.keys(computed.g).length){gusts[name]=computed.g;
+     if(state.ensemble_models?.[name])state.ensemble_models[name].gust_members=computed.member_gust;}
+   }catch(e){statuses[name]={status:'indisponivel',detail:describeError(e)};
+    if(e.status===429)break; // limite de taxa: evitar insistir
+   }
+   if(token===generation){
+    state.spray_joint_hourly=mixJointEvent(byModel,'hour');
+    state.spray_joint_windows_2h=mixJointEvent(byModel,'window');
+    state.spray_joint_model_status={...statuses};
+    if(Object.keys(gusts).length)state.gust_ensemble_daily=mix(gusts,mixGust);
+    render();
+   }
+  }
+ }finally{
+  if(token===generation){
+   const count=Object.keys(byModel).length;
+   setEnsembleStatus(`${validEnsembleCount(state)} modelos válidos de chuva; ${count} modelos com variáveis completas para a triagem de pulverização. Frequências NÃO calibradas.`,count?'good':'info');
+  }
+  sprayBusy=false;
+ }
+}
+
 function emptyState(point,forecast){return {
  schema_version:9,issued_at_utc:new Date().toISOString(),site:{latitude:point.latitude,longitude:point.longitude,timezone:forecast.timezone,custom:true},
  deterministic:forecast,rain_ensemble_daily:[],gust_ensemble_daily:[],rain_ensemble_hourly:[],rain_models_daily:[],ensemble_models:{},
@@ -216,21 +301,54 @@ async function refreshCustom(manual=true){
   // A large member request is wasteful every 30 min per visitor. The short-term
   // forecast refreshes every 30 min; ensembles are cached 3h (min 30m when manual).
   const maxAge=manual?30*60*1000:3*60*60*1000;
-  if(ensembleCache.key===key && ensembleCache.data && Date.now()-ensembleCache.at<maxAge){
+  const cachedCount=ensembleCache.key===key?validEnsembleCount(ensembleCache.data):0;
+  if(cachedCount>0 && Date.now()-ensembleCache.at<maxAge){
    Object.assign(state,ensembleCache.data);state._ensembleFetchedAt=new Date(ensembleCache.at).toISOString();
    render();updateLocationUI();
    const mins=Math.round((Date.now()-ensembleCache.at)/60000);
-   show(`✓ Previsão nova para ${loc.name}; ensembles reaproveitados do cache (${mins} min). Consulte novamente após a atualização do conjunto.`,'good');
-   setRefreshFeedback(`✓ Previsão determinística atualizada agora. Ensembles obtidos há ${mins} min (cache para reduzir chamadas gratuitas).`,'good');
+   setEnsembleStatus(`✓ ${cachedCount} modelos válidos de chuva; resultados consultados há ${mins} min. Cache da MESMA coordenada. Frequências não calibradas.`,'good');
+   show(`✓ ${cachedCount} ensembles válidos para ${loc.name}, atualizados há ${mins} min.`,'good');
+   setRefreshFeedback(`✓ Previsão determinística atualizada. ${cachedCount} ensembles válidos em cache por ${mins} min.`,'good');
+   if(document.querySelector('#tabs button[data-tab="spray"]')?.classList.contains('active') && !(state.spray_joint_hourly||[]).length){
+    void requestSprayEnsembles({...loc},token,key);
+   }
    return;
   }
-  const ensembles=await requestEnsembles(loc,token);
+  const recentFailure=ensembleFailureCooldown.key===key && Date.now()-ensembleFailureCooldown.at<3*60*1000;
+  if(recentFailure){
+   setEnsembleStatus('A Open-Meteo recusou ou não concluiu as consultas há pouco. Aguardando 3 minutos antes de uma nova tentativa, para respeitar limites gratuitos.','error');
+   show('⚠ Ensembles temporariamente indisponíveis; a previsão determinística está atualizada.','error');
+   return;
+  }
+  const onProgress=(name,partial,total,hitLimit)=>{
+   if(token!==generation)return;
+   const data=summarizeEnsembles(partial),valid=validEnsembleCount(data);
+   Object.assign(state,data);state._ensembleFetchedAt=new Date().toISOString();
+   render();updateLocationUI();
+   setEnsembleStatus(`${Object.keys(partial).length}/${total} modelos consultados; ${valid} com chuva válida. ${hitLimit?'Limite HTTP 429 — interrompendo novas consultas.':'Os resultados já disponíveis aparecem nos gráficos.'} Frequências ainda não calibradas.`,valid?'good':hitLimit?'error':'info');
+  };
+  setEnsembleStatus('Consultando primeiro os membros de chuva (8 modelos). Os resultados serão exibidos assim que cada modelo responder; sem exigir os dados mais pesados de pulverização.');
+  const ensembles=await requestEnsembles(loc,token,onProgress);
   if(token!==generation)return;
-  const ensembleData=summarizeEnsembles(ensembles);Object.assign(state,ensembleData);ensembleCache={key,at:Date.now(),data:ensembleData};state._ensembleFetchedAt=new Date(ensembleCache.at).toISOString();
-  const n=Object.values(ensembles).filter(x=>x.computed?.member_rain>0).length;
+  const ensembleData=summarizeEnsembles(ensembles),n=validEnsembleCount(ensembleData);
+  Object.assign(state,ensembleData);
+  if(n){
+   ensembleCache={key,at:Date.now(),data:ensembleData};
+   state._ensembleFetchedAt=new Date(ensembleCache.at).toISOString();
+   show(`✓ ${n}/8 ensembles de chuva válidos para ${loc.name}; cálculo realizado somente para essas coordenadas.`,'good');
+   setEnsembleStatus(`✓ ${n}/8 ensembles válidos. ${Object.keys(ensembles).length-n} modelos indisponíveis ou sem chuva completa. Chuva e incerteza exibidas a partir da amostra disponível. Frequências NÃO calibradas.`,'good');
+   setRefreshFeedback(`✓ ${n} ensembles de chuva consultados diretamente para ${loc.name}. As fontes de Naviraí não foram reutilizadas.`,'good');
+  }else{
+   ensembleFailureCooldown={key,at:Date.now()};
+   const counts=Object.values(ensembles).map(x=>x.error||'sem dados válidos');
+   const reason=counts.some(x=>x.includes('429'))?'HTTP 429: limite de requisições':counts.some(x=>x.includes('Tempo limite'))?'tempo limite da API':'nenhum ensemble retornou chuva válida';
+   show('⚠ Previsão determinística disponível, mas os oito ensembles falharam: '+reason,'error');
+   setEnsembleStatus(`⚠ ${reason}. Nenhum resultado vazio será guardado em cache; a previsão determinística continua disponível. Não existem percentuais multimodelo para esta coleta.`,'error');
+   setRefreshFeedback('⚠ Falha nos ensembles; sem percentuais probabilísticos. Previsão determinística mantida.','error');
+  }
   render();updateLocationUI();
-  show(`✓ ${n}/8 ensembles válidos para ${loc.name}. Frequências ainda NÃO calibradas.`,`good`);
-  setRefreshFeedback(`✓ ${n}/8 modelos com chuva consultados diretamente. NASA POWER e outras fontes têm status independente.`,'good');
+  if(n && token===generation && document.querySelector('#tabs button[data-tab="spray"]')?.classList.contains('active'))void requestSprayEnsembles({...loc},token,key);
+
  }catch(e){if(token===generation){show('Falha na previsão: '+describeError(e),'error');setRefreshFeedback('⚠ '+describeError(e),'error');}}
  finally{if(token===generation){busy=false;$('refresh').disabled=false;$('refresh').textContent='↻ Atualizar previsão agora';}}
 }
@@ -315,7 +433,7 @@ async function getElevation(point,token){
   $('point-elevation').textContent=finite(v.elevation?.[0])?`${format(v.elevation[0],0)} m · Copernicus DEM GLO-90 (elevação modelada)`: 'Altitude indisponível';
  }catch(e){if(token===generation)$('point-elevation').textContent='Altitude não disponível: '+describeError(e);}
 }
-async function select(point){try{busy=false;const pair=validate(Number(point.latitude),Number(point.longitude));if(locEquals(pair,DEFAULT))return reset();const name=String(point.name||'Coordenadas personalizadas').trim().slice(0,62)||'Coordenadas personalizadas';applyPoint({...pair,timezone:'auto',name,custom:true});
+async function select(point){try{busy=false;sprayRunKey=null;sprayLastAttempt={key:null,at:0};const pair=validate(Number(point.latitude),Number(point.longitude));if(locEquals(pair,DEFAULT))return reset();const name=String(point.name||'Coordenadas personalizadas').trim().slice(0,62)||'Coordenadas personalizadas';applyPoint({...pair,timezone:'auto',name,custom:true});
  // Remove Naviraí forecast immediately on switching, even if API fails.
  state=null;document.querySelectorAll('.tab .plot').forEach(e=>{if(e.id)clearPlot(e.id,'Consultando dados para o novo ponto…');});
  document.querySelectorAll('.tab table').forEach(t=>{t.innerHTML='<tbody><tr><td>Aguardando dados válidos para as coordenadas selecionadas.</td></tr></tbody>';});
@@ -324,16 +442,22 @@ async function select(point){try{busy=false;const pair=validate(Number(point.lat
  $('metrics').innerHTML='';$('insights').textContent='Aguardando nova previsão específica da coordenada selecionada.';
  await refreshCustom(true);
  }catch(e){show(describeError(e),'error');}}
-function reset(){++generation;busy=false;ancillaryKey=null;loc={...DEFAULT};sessionStorage.removeItem('campo-selected-point');try{const url=new URL(window.location.href);for(const x of ['lat','lon','name'])url.searchParams.delete(x);history.replaceState(null,'',url.pathname+url.search+url.hash);}catch(_){}updateLocationUI();$('location-status').textContent='Naviraí restaurada: carregando boletim automático da sede…';state=null;refresh(true);const t=++generation;void getElevation(loc,t);}
+function reset(){++generation;busy=false;ancillaryKey=null;sprayRunKey=null;sprayLastAttempt={key:null,at:0};loc={...DEFAULT};sessionStorage.removeItem('campo-selected-point');try{const url=new URL(window.location.href);for(const x of ['lat','lon','name'])url.searchParams.delete(x);history.replaceState(null,'',url.pathname+url.search+url.hash);}catch(_){}updateLocationUI();$('location-status').textContent='Naviraí restaurada: carregando boletim automático da sede…';state=null;refresh(true);const t=++generation;void getElevation(loc,t);}
 $('loc-form').addEventListener('submit',e=>{e.preventDefault();select({latitude:$('loc-lat').value.replace(',','.'),longitude:$('loc-lon').value.replace(',','.'),name:$('loc-name').value.trim()});});
 $('loc-reset').addEventListener('click',reset);
 $('loc-share').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(window.location.href);show('Link do ponto copiado para compartilhar.','good');}catch(e){show('Copie o endereço da barra do navegador. Ele contém as coordenadas do ponto.','info');}});
 $('loc-navirai').addEventListener('click',reset);
 $('loc-diamantino').addEventListener('click',()=>select({latitude:-14.408,longitude:-56.446,name:'Diamantino–MT'}));
 $('nasa-refresh').addEventListener('click',()=>{const t=generation;void getNASA(loc,t);});
-$('tabs').addEventListener('click',event=>{if(event.target.closest('button[data-tab="history-nasa"]')){const t=generation;void getNASA(loc,t);void getAirQuality(loc,t);}});
+$('tabs').addEventListener('click',event=>{
+ if(event.target.closest('button[data-tab="history-nasa"]')){const t=generation;void getNASA(loc,t);void getAirQuality(loc,t);}
+ if(event.target.closest('button[data-tab="spray"], button[data-tab="wind"]') && loc.custom && !busy && state && validEnsembleCount(state)>0){
+  const key=`${loc.latitude.toFixed(5)},${loc.longitude.toFixed(5)}`;
+  if(sprayRunKey!==key || !(state.spray_joint_hourly||[]).length)void requestSprayEnsembles({...loc},generation,key);
+ }
+});
 // Existing 30-min polling is handled by app.js. Custom points must never pull Naviraí snapshots.
-window.CampoLocation={isCustom:()=>loc.custom,refreshCustom,select,reset,getPoint:()=>({...loc}),_test:{parseNASA,computeModel,summarizeEnsembles,weightedQuantile,validate,readJoint,jointAssessment,mixJointEvent}};
+window.CampoLocation={isCustom:()=>loc.custom,refreshCustom,select,reset,getPoint:()=>({...loc}),_test:{parseNASA,computeModel,summarizeEnsembles,weightedQuantile,validate,readJoint,jointAssessment,mixJointEvent,requestEnsembles,usableModelRain,validEnsembleCount}};
 updateLocationUI();
 try{
  const url=new URL(window.location.href),lat=url.searchParams.get('lat'),lon=url.searchParams.get('lon');
