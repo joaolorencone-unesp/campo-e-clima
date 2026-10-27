@@ -63,3 +63,20 @@
 .gefs-block{border-top:1px solid #d7e6ed;margin-top:24px;padding-top:15px}
 .spray-quick{border:1px solid #e8d6ac;border-left:5px solid #bb782b;background:#fffaed;padding:13px 16px;border-radius:10px;margin:13px 0 2px;font-size:13px;line-height:1.65;color:#59481e}
 .spray-quick strong{color:#834713}.spray-quick em{font-style:normal;color:#6a7584}
+
+/* Campo e Clima v1.4 • interactive maps, clouds, directional wind compass */
+.weather-map{height:560px;border:1px solid #d2e2ea;background:#eaf2f6;border-radius:14px;overflow:hidden;position:relative;isolation:isolate}
+.weather-map .map-loading{padding:35px;text-align:center;color:#516f83}
+.map-toolbar,.map-timebar,.map-foot{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:10px 0 14px}
+.map-toolbar label{display:flex;flex:1 1 190px;min-width:145px;flex-direction:column;font-size:12px;font-weight:650;gap:5px;color:#486779}
+.map-toolbar select,.map-toolbar input{max-width:100%;width:100%;height:43px;background:white;border:1px solid #cadde9;color:#234359;border-radius:8px;padding:7px 9px}
+.map-timebar #map-hour{flex:1 1 260px;accent-color:#0879aa;min-width:120px}.map-timebar strong{font-size:13px;color:#17536f;min-width:190px}
+.map-foot{justify-content:space-between;gap:16px}.map-foot #map-legend{font-size:12px;color:#375d74;flex:1 1 300px}
+.forecast-arrow{border:0;background:transparent}.forecast-arrow span{display:flex;align-items:center;justify-content:center;width:30px;height:30px;font-size:26px;font-weight:900;color:#b74736;filter:drop-shadow(0 1px 2px white);transform-origin:50% 50%}
+.wind-compass-panel .panel-head{display:flex;justify-content:space-between;gap:15px;align-items:center;flex-wrap:wrap}.wind-compass-panel .panel-head label{font-size:12px;font-weight:700;color:#456879}
+.wind-compass-panel .panel-head select{display:block;min-width:215px;max-width:100%;margin-top:5px}
+.wind-compass-content{display:flex;align-items:center;gap:26px;flex-wrap:wrap;min-height:160px;padding:10px 0}
+.wind-compass-content svg{flex-shrink:0;max-width:100%}.wind-compass-content svg text{font:800 14px system-ui,sans-serif;fill:#305a76}
+.compass-labels{display:flex;flex-direction:column;gap:7px;min-width:220px}.compass-labels>strong{font-size:25px;color:#1e5678}.compass-labels small{font-size:12px;font-weight:500;color:#748d9e}.compass-labels .from-wind{color:#2076a5}.compass-labels .to-wind{color:#b35b2d}
+@media(max-width:760px){.weather-map{height:410px}.map-toolbar label{flex-basis:43%}.map-timebar #map-hour{flex-basis:100%;order:5}.wind-compass-content{gap:7px;justify-content:center}.compass-labels{min-width:0}.wind-compass-panel .panel-head label{width:100%}}
+@media(max-width:480px){.map-toolbar label{flex-basis:100%}.map-timebar strong{width:100%}.weather-map{height:360px}}

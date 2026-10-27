@@ -1,3 +1,11 @@
+## v1.4 — Mapas e imagens de satélite (atualização)
+
+- Aba **🛰 Mapas & nuvens**: mapa por coordenadas, 48 horas de nuvens (total/baixas/médias/altas), chuva e vento em grade Open-Meteo (9 amostras, sem pretensão de alta resolução espacial).
+- Camadas **NASA GIBS** MODIS Terra/VIIRS NOAA-20 por data UTC, imagens orbitais observadas (não GOES ao vivo; horário da passagem não verificado).
+- **Bússola do vento** na aba de vento mostrando origem meteorológica e sentido oposto do transporte potencial.
+- Links para NASA Worldview, GPM/IMERG e CPTEC/INPE GOES-19. Fontes gratuitas, sem novas chaves.
+- Atualização do mapa sob demanda, cache 2h; ver `docs/MAPAS_SATELITE_V14.md` e `ATUALIZAR_GITHUB_V14.md`.
+
 # Campo e Clima v1.3 — meteorologia multimodelo, histórico e operação agrícola
 
 **Novo nesta edição:** formulário de latitude/longitude WGS84, link compartilhável por ponto, consulta direta de Forecast e até oito ensembles da Open-Meteo para coordenadas selecionadas, gráficos NASA POWER (chuva/temperatura histórica), reanálise ERA5-Land, altitude, qualidade do ar e umidade superficial modelada. Sem serviços pagos e sem novas chaves. A publicação permanece pelo GitHub Desktop/Actions. **O GitHub Pages não é um servidor de APIs.**
