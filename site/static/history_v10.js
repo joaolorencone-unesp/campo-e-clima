@@ -17,7 +17,7 @@
   const dayFor = s => String(s).slice(0,10);
   const notice = (id,msg,style='muted') => { if($(id)) {$(id).className='notice '+style;$(id).textContent=msg;} };
   const numberOrNA = n => finite(n) && n !== -9999 ? n : null;
-  let currentPoint=null, generation=0, nasa=null, daily=null, hourly=null, lastRows=[], loadedPoint='', currentDays=90;
+  let currentPoint=null, generation=0, nasa=null, daily=null, hourly=null, lastRows=[], loadedPoint='', currentDays=90, historySource='ERA5';
   function pairKey(p){return `${Number(p.latitude).toFixed(5)},${Number(p.longitude).toFixed(5)}`;}
   function changePoint(p){
     if(!p || !finite(Number(p.latitude)) || !finite(Number(p.longitude)))return;
@@ -34,12 +34,13 @@
     const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),seconds*1000);
     try{const r=await fetch(url,{signal:ctrl.signal,cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);const x=await r.json();if(x?.error)throw Error(x.reason||'Resposta API com erro');return x;}finally{clearTimeout(timer);}
   }
-  function parseDaily(payload){
+  function parseDaily(payload, allowMissingRain=false){
     const d=payload?.daily||{};const dates=d.time;
     if(!Array.isArray(dates)||dates.length<10||!Array.isArray(d.precipitation_sum)||d.precipitation_sum.length!==dates.length)throw Error('Arquivo histórico sem datas e chuva consistentes');
     if(payload.timezone!=='GMT' && payload.timezone!=='UTC' && payload.utc_offset_seconds!==0)throw Error('Esperado histórico em UTC');
     // HTTP 200 with all null precipitation is not a valid rainfall dataset.
-    if(!d.precipitation_sum.some(v=>finite(v)&&v>=0))throw Error('Fonte histórica retornou chuva nula em todos os dias; testar ERA5');
+    if(!d.precipitation_sum.some(v=>finite(v)&&v>=0)&&!allowMissingRain)throw Error('Fonte histórica retornou chuva nula em todos os dias; testar ERA5');
+    if(allowMissingRain && !d.precipitation_sum.some(v=>finite(v)&&v>=0) && !['temperature_2m_mean','temperature_2m_max','temperature_2m_min'].some(k=>Array.isArray(d[k])&&d[k].some(finite)))throw Error('Nem chuva nem temperatura numérica disponível');
     const values=['precipitation_sum','temperature_2m_mean','temperature_2m_max','temperature_2m_min','wind_speed_10m_max','wind_gusts_10m_max','et0_fao_evapotranspiration','shortwave_radiation_sum'];
     const seen=new Set();return dates.map((date,i)=>{
       if(seen.has(date))throw Error('Data repetida no histórico: '+date);seen.add(date);
@@ -108,8 +109,10 @@
   function drawHistory(){
     if(!daily)return;
     const series=daily.slice(-currentDays),dates=series.map(r=>r.date);
+    const hasArchiveRain=series.some(r=>finite(r.precipitation_sum));
+    const nasaLookup=new Map((nasa?.records||[]).filter(r=>finite(r.PRECTOTCORR)).map(r=>[r.date,r.PRECTOTCORR]));
     chart('hist-daily-plot',[
-      {type:'bar',x:dates,y:series.map(r=>r.precipitation_sum),name:'Chuva ERA5',marker:{color:'#2586b5'},hovertemplate:'%{x}<br>Chuva: %{y:.1f} mm<extra></extra>'},
+      {type:'bar',x:dates,y:series.map(r=>hasArchiveRain?r.precipitation_sum:(nasaLookup.get(r.date)??null)),name:hasArchiveRain?'Chuva '+historySource:'Chuva NASA POWER (ERA5 indisponível)',marker:{color:'#2586b5'},hovertemplate:'%{x}<br>Chuva: %{y:.1f} mm<extra></extra>'},
     ],'Chuva (mm/dia)',{height:365});
     const comparison=pairedSummary(nasa?.records||[],series);
     if(comparison.n>=10){
@@ -119,10 +122,12 @@
       ],'Chuva diária (mm)',{height:365});
     }else clearPlot('hist-compare-plot','Comparação ainda sem pelo menos dez datas comuns NASA × ERA5 em UTC.');
     const prev=series.filter(r=>finite(r.precipitation_sum));
+    const nasaAvail=series.map(r=>nasaLookup.get(r.date)).filter(finite);
+    const nasaTotal=nasaAvail.length?nasaAvail.reduce((a,b)=>a+b,0):null;
     const rain=prev.reduce((s,r)=>s+r.precipitation_sum,0),wet=prev.filter(r=>r.precipitation_sum>=1).length;
     const vals=k=>series.map(r=>r[k]).filter(finite),mean=v=>v.length?v.reduce((s,x)=>s+x,0)/v.length:null;
     const etValues=vals('et0_fao_evapotranspiration');const t=mean(vals('temperature_2m_mean')),et0=etValues.length?etValues.reduce((s,x)=>s+x,0):null,gust=vals('wind_gusts_10m_max');
-    $('hist-kpis').innerHTML=`<div class="nasa-summary-grid"><div><small>Chuva ERA5 · ${prev.length} dias válidos</small><strong>${prev.length?fmt(rain)+' mm':'Sem dados'}</strong></div><div><small>Dias com chuva ≥1 mm</small><strong>${prev.length?wet+' dias':'Sem dados'}</strong></div><div><small>Temperatura média da série</small><strong>${fmt(t)} °C</strong></div><div><small>ET₀ acumulada*</small><strong>${finite(et0)?fmt(et0)+' mm':'Sem dados'}</strong></div><div><small>Maior rajada diária na grade</small><strong>${fmt(gust.length?Math.max(...gust):null)} km/h</strong></div><div><small>Comparação NASA × ERA5</small><strong>${comparison.n} dias</strong></div></div>`;
+    $('hist-kpis').innerHTML=`<div class="nasa-summary-grid"><div><small>Chuva ${esc(historySource)} · ${prev.length} dias válidos</small><strong>${prev.length?fmt(rain)+' mm':'Sem dados'}</strong></div><div><small>Dias com chuva ≥1 mm</small><strong>${prev.length?wet+' dias':'Sem dados'}</strong></div><div><small>Temperatura média da série</small><strong>${fmt(t)} °C</strong></div><div><small>ET₀ acumulada*</small><strong>${finite(et0)?fmt(et0)+' mm':'Sem dados'}</strong></div><div><small>Maior rajada diária na grade</small><strong>${fmt(gust.length?Math.max(...gust):null)} km/h</strong></div><div><small>Chuva NASA · ${nasaAvail.length} dias</small><strong>${nasaTotal===null?'Sem dados':fmt(nasaTotal)+' mm'}</strong></div></div>`;
     const screen=hourly?screenDays(hourly):[];
     const byScreen=new Map(screen.map(s=>[s.date,s]));
     const tableRows=series.slice().reverse().slice(0,Math.min(currentDays,120)).map(r=>{
@@ -132,8 +137,17 @@
     tableFill('hist-table',['Data UTC¹','ERA5 chuva mm','NASA chuva mm','T máx °C','T mín °C','ET₀ mm','Rajada máx km/h','Horas pré-triagem²'],tableRows);
     if(comparison.n>=10)notice('hist-compare-status',`${comparison.n} dias UTC comparados. Diferença média NASA − ERA5: ${fmt(comparison.meanDifference)} mm/dia; diferença absoluta média: ${fmt(comparison.meanAbsDifference)} mm/dia; correlação: ${fmt(comparison.correlation,2)}. CONCORDÂNCIA ENTRE PRODUTOS, não acurácia medida em estação.`, 'muted');
     else notice('hist-compare-status','Comparação NASA/ERA5 ainda sem dias simultâneos suficientes. São duas estimativas em grade, não observações independentes de pluviômetro.');
-    notice('hist-status',`✓ Open-Meteo Historical Weather: ${daily.length} dias UTC; chuva/vento: ERA5 (0,25°), ET₀/rajada: ERA5-Land (0,1°), apenas onde válidas. Os ${series.length} últimos dias aparecem nos gráficos. Reanálises, não pluviômetro. Atraso aproximado de 5 dias.`, 'muted');
+    notice('hist-status',`${prev.length?'✓':'⚠️'} Open-Meteo Historical Weather: ${daily.length} datas UTC; chuva ${historySource}: ${prev.length} dias com valor válido; temperatura ${vals('temperature_2m_mean').length} dias. ${prev.length===0?'A chuva mostrada no gráfico, quando disponível, é exclusivamente NASA POWER — não ERA5.':'Precipitação e temperaturas são reanálises, não pluviômetros.'} Atraso e cobertura dependem do produto.`, prev.length?'muted':'warning');
     redrawActive();
+  }
+  function drawNASAOnly(){
+    if(daily||!Array.isArray(nasa?.records))return;
+    const records=nasa.records.filter(r=>finite(r.PRECTOTCORR)).slice(-currentDays);
+    if(!records.length)return;
+    chart('hist-daily-plot',[{type:'bar',x:records.map(r=>r.date),y:records.map(r=>r.PRECTOTCORR),name:'NASA POWER • estimativa em grade',marker:{color:'#2586b5'}}],'Chuva NASA POWER (mm/dia)',{height:365});
+    $('hist-kpis').innerHTML=`<div class="nasa-summary-grid"><div><small>NASA POWER · ${records.length} datas</small><strong>${fmt(records.reduce((a,r)=>a+r.PRECTOTCORR,0))} mm</strong></div><div><small>ERA5</small><strong>Indisponível</strong></div><div><small>Verificação</small><strong>Não é pluviômetro</strong></div></div>`;
+    tableFill('hist-table',['Data UTC','NASA chuva mm'],records.slice().reverse().map(r=>`<tr><td>${esc(r.date)}</td><td>${fmt(r.PRECTOTCORR)}</td></tr>`));
+    notice('hist-status',`Histórico ERA5 sem série numérica completa. Exibindo somente NASA POWER: ${records.length} dias, estimativa em grade. Não foi atribuído zero às variáveis ausentes.`,'warning');
   }
   function drawScreen(){
     const days=hourly?screenDays(hourly):[];
@@ -154,7 +168,7 @@
     try{
       const cached=CACHE.get(key);const c=cached&&Date.now()-cached.saved<12*3600000?cached:null;
       let d;
-      if(c)d=c.payload;
+      if(c){d=c.payload;historySource=c.source||'ERA5';}
       else{
         const at={latitude:p.latitude,longitude:p.longitude,start_date:start,end_date:end,timezone:'UTC'};
         const baseFields='precipitation_sum,temperature_2m_mean,temperature_2m_max,temperature_2m_min,wind_speed_10m_max,shortwave_radiation_sum';
@@ -162,20 +176,32 @@
         try{base=await fetchJSON(params(ARCHIVE,{...at,models:'era5',daily:baseFields}),55);}
         catch(_){base=await fetchJSON(params(ARCHIVE,{...at,models:'era5',daily:'precipitation_sum,temperature_2m_max,temperature_2m_min'}),55);}
         if(token!==generation)return;
-        // Do not cache/claim success when the API fills precipitation with nulls.
-        parseDaily(base);
+        // Verify NUMERIC rain, not HTTP status. Some archive products may return
+        // temperatures and an all-null rain array. Try another documented model.
+        let source='ERA5';
+        try{parseDaily(base);}catch(err){
+          try{
+            const backup=await fetchJSON(params(ARCHIVE,{...at,models:'best_match',daily:'precipitation_sum,temperature_2m_mean,temperature_2m_max,temperature_2m_min,wind_speed_10m_max'}),40);
+            parseDaily(backup);
+            base=backup;source='Open-Meteo best_match';
+          }catch(_){
+            // Preserve valid temperature without inventing precipitation.
+            parseDaily(base,true);source='ERA5 (chuva indisponível)';
+          }
+        }
+        historySource=source;
         d=base;
         try{
           const surface=await fetchJSON(params(ARCHIVE,{...at,models:'era5_land',daily:'wind_gusts_10m_max,et0_fao_evapotranspiration'}),45);
           if(token!==generation)return;
           d=mergeDailyBaseLand(base,surface);
         }catch(err){notice('hist-status','ERA5 atmosférico disponível; complementação ERA5-Land ET₀/rajadas indisponível: '+String(err.message||err).slice(0,95),'warning');}
-        CACHE.set(key,{saved:Date.now(),payload:d});
+        CACHE.set(key,{saved:Date.now(),payload:d,source:historySource});
       }
       if(token!==generation)return;
-      daily=parseDaily(d);drawHistory();
+      daily=parseDaily(d,true);drawHistory();
       if(!hourly || opts.force)void loadHourly(p,token);
-    }catch(e){if(token!==generation)return;daily=null;const msg=e.name==='AbortError'?'Tempo limite excedido':String(e.message||e).slice(0,140);notice('hist-status','Histórico atmosférico ERA5 indisponível: '+msg,'warning');clearPlot('hist-daily-plot','Não há chuva diária válida.');clearPlot('hist-compare-plot','Sem dados comparáveis.');$('hist-kpis').innerHTML='';$('hist-table').innerHTML='';}
+    }catch(e){if(token!==generation)return;daily=null;const msg=e.name==='AbortError'?'Tempo limite excedido':String(e.message||e).slice(0,140);notice('hist-status','Histórico atmosférico ERA5 indisponível: '+msg,'warning');clearPlot('hist-daily-plot','Não há chuva diária válida.');clearPlot('hist-compare-plot','Sem dados comparáveis.');$('hist-kpis').innerHTML='';$('hist-table').innerHTML='';drawNASAOnly();}
   }
   async function loadHourly(p,token){
     notice('hist-spray-status','Consultando 31 dias horários: ERA5 atmosférico + ERA5-Land rajadas (hora local).');
@@ -195,7 +221,7 @@
       drawScreen();
     }catch(e){if(token!==generation)return;hourly=null;notice('hist-spray-status','Pré-triagem histórica indisponível: '+String(e.message||e).slice(0,130),'warning');clearPlot('hist-spray-plot','Faltam variáveis horárias conjuntas.');}
   }
-  function receiveNASA(data){const p=window.CampoLocation?.getPoint?.();if(!p||!data||!data.records||pairKey(p)!==pairKey({latitude:data.lat,longitude:data.lon}))return;nasa=data;if(daily)drawHistory();}
+  function receiveNASA(data){const p=window.CampoLocation?.getPoint?.();if(!p||!data||!data.records||pairKey(p)!==pairKey({latitude:data.lat,longitude:data.lon}))return;nasa=data;if(daily)drawHistory();else drawNASAOnly();}
   const haversine=(a,b,c,d)=>{const r=Math.PI/180,x=(c-a)*r,y=(d-b)*r,p=2*Math.asin(Math.min(1,Math.sqrt(Math.sin(x/2)**2+Math.cos(a*r)*Math.cos(c*r)*Math.sin(y/2)**2)));return 6371.009*p;};
   async function loadStations(p,token){
     try{

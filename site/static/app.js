@@ -295,6 +295,7 @@ function ensembleScreening(){
  const modelsOK=modelStatuses.filter(x=>x.status==='ok');
  const pstatus=$('spray-ensemble-status');
  if(!valid.length){
+  if($('spray-quick-diagnosis'))$('spray-quick-diagnosis').textContent='Sem amostra conjunta completa. As previsões numéricas continuam visíveis, mas não foi estimada frequência de cenário.';
   pstatus.className='notice warning';
   pstatus.innerHTML='<b>Não há amostra conjunta completa dos ensembles para pulverização.</b> São necessárias as mesmas variáveis e o mesmo identificador de membro. A previsão determinística abaixo continua disponível apenas como referência; <b>não estima probabilidade de cenário.</b>';
   for(const id of ['spray-prob-plot','spray-causes-plot','spray-2h-plot']) {clearPlot(id,'Sem amostra conjunta verificada; não foi atribuída probabilidade.');}
@@ -309,9 +310,16 @@ function ensembleScreening(){
  const cards=focused.slice(0,1).map(r=>r[kind]);
  const first=cards[0];
  if(!first){clearPlot('spray-prob-plot','Sem horários válidos neste dia.');clearPlot('spray-causes-plot','Sem horários válidos neste dia.');clearPlot('spray-2h-plot','Sem horários válidos neste dia.');$('spray-scenario-cards').innerHTML='';$('spray-best2h').innerHTML='';return;}
- $('spray-scenario-cards').innerHTML=[['Passa filtros (NÃO é liberação)',first.passa,'#1e9c74'],['Marginal',first.marginal,'#d28b22'],['Restrita',first.restrito,'#c24f54'],['Indeterminada (noite/inversão)',first.indeterminado??0,'#8998ad']].map(([label,p,color])=>`<div class="screen-metric"><small>${esc(label)} • ${esc(dh(valid[0].time))}</small><strong style="color:${color}">${percent(p)}</strong><span>Frequência entre ${first.members} membros completos</span></div>`).join('');
+ $('spray-scenario-cards').innerHTML=[['Passa filtros (NÃO é liberação)',first.passa,'#1e9c74'],['Marginal',first.marginal,'#d28b22'],['Restrita',first.restrito,'#c24f54'],['Indeterminada (noite/inversão)',first.indeterminado??0,'#8998ad']].map(([label,p,color])=>`<div class="screen-metric"><small>${esc(label)} • ${esc(dh(focused[0].time))}</small><strong style="color:${color}">${percent(p)}</strong><span>Frequência entre ${first.members} membros completos</span></div>`).join('');
  // EVERY valid hour displayed: filter by date if the user wants readable 24h.
  const sample=focused, x=sample.map(r=>dh(r.time));
+ // Immediate, human-readable limiting factor: joint restrictions can overlap.
+ const highestRestriction=focused.reduce((best,row)=>!best||row[kind].restrito>best[kind].restrito?row:best,null);
+ if($('spray-quick-diagnosis')&&highestRestriction){
+   const classified=highestRestriction[kind], top=Object.entries(classified.reasons||{}).filter(([k,v])=>k!=='inversao_nao_verificada'&&Number.isFinite(v)&&v>0).sort((a,b)=>b[1]-a[1]).slice(0,3);
+   const summary=top.map(([key,freq])=>`${esc(SPRAY_REASONS[key]||key)}: <strong>${percent(freq)}</strong>`).join(' · ');
+   $('spray-quick-diagnosis').innerHTML=`<strong>🔎 O que mais restringe a pulverização?</strong> No horário ${esc(dh(highestRestriction.time))}, <strong>${percent(classified.restrito)}</strong> dos membros foram classificados como restritos. Principais fatores: ${summary||'nenhum fator individual quantificável'}. <em>${classified.models} modelos, ${classified.members} membros completos; os fatores podem ocorrer simultaneamente. Frequências não calibradas, NÃO probabilidade de aplicação segura.</em> Use o seletor "Inspecionar hora" abaixo para analisar qualquer horário.`;
+ }
  const inspector=$('spray-inspect-hour');
  if(inspector){
   const previous=inspector.value;
@@ -434,7 +442,7 @@ function renderExtras(){
  const c=state?.complementary||{};
  const metas=[['CPTEC/INPE — 7 dias','cptec'],['OpenWeather Free • 5 dias / 3h (opcional)','openweather'],
  ['Open-Meteo • solo em grade','soil_forecast'],['NASA POWER (histórico em grade)','nasa_power'],
- ['ECMWF EC46/SEAS5 (tendência)','ecmwf_extended'],
+ ['ECMWF EC46/SEAS5 (tendência)','ecmwf_extended'],['GEFS 15–35 dias (diário)','gefs_extended'],
  ['Climatologia ERA5-Land (1991–2020)','era5_climatology'],['Previous Runs • previsões passadas','previous_runs'],['GOES-19 / INPE DSAT','goes_satellite'],
  ['GPM/IMERG','gpm_imerg'],['ISRIC SoilGrids','soilgrids']];
  tableFill('source-status-table',['Serviço','Estado real da integração','Horário da consulta (UTC)','Informação'],
@@ -497,21 +505,33 @@ function renderCalendar(){
  const base=state?.issued_at_utc?new Date(state.issued_at_utc):new Date();
  const start=localISO(base);
  const daily=dailyData(),byDate=new Map((daily.time||[]).map((str,i)=>[str,i]));
+ const custom=window.CampoLocation?.isCustom?.()===true;
+ const ext=custom?{}:(state?.complementary?.gefs_extended||{});
+ const gefs=ext.state==='ok'?new Map((ext.days||[]).map(r=>[r.date,r])):new Map();
  const startUTC=Date.parse(start+'T12:00:00Z');
  const mondayOffset=(new Date(startUTC).getUTCDay()+6)%7;
  let cells=['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'].map(x=>`<div class="calhead">${x}</div>`);
  for(let k=0;k<mondayOffset;k++)cells.push('<div class="calblank"></div>');
+ let missing=0,shown=0,shownGEFS=0;
  for(let k=0;k<30;k++){
   const date=new Date(startUTC+k*86400000).toISOString().slice(0,10);
-  const i=byDate.get(date);
-  const rain=i==null?null:num(val(daily,'precipitation_sum',i)),tmax=i==null?null:num(val(daily,'temperature_2m_max',i));
-  const has=rain!==null||tmax!==null;
-  const cls=!has?'missing':rain>=15?'heavy':rain>=5?'wet':rain>=.1?'light':'dry';
-  const symbol=!has?'—':rain>=15?'🌧':rain>=5?'🌦':rain>=.1?'🌤':'☀';
-  cells.push(`<div class="calday ${cls}"><strong>${esc(ddmm(date))}</strong>${has?`<span>${symbol} ${fmt(rain)} mm</span><small>T máx ${fmt(tmax,0)} °C</small><small>Previsão determinística</small>`:'<span>Sem previsão diária</span><small>Não significa tempo seco</small>'}</div>`);
+  const i=byDate.get(date),r=i==null?null:num(val(daily,'precipitation_sum',i)),tmax=i==null?null:num(val(daily,'temperature_2m_max',i));
+  const g=k>=14?gefs.get(date):null;
+  if(r===null&&tmax===null&&!g){missing++;continue;}
+  shown++;
+  if(g){shownGEFS++;
+    cells.push(`<div class="calday gefs"><strong>${esc(ddmm(date))}</strong><span>GEFS P50: ${fmt(g.p50_mm)} mm</span><small>P10–P90: ${fmt(g.p10_mm)}–${fmt(g.p90_mm)} mm</small><small>UM modelo · ${g.members} membros</small></div>`);
+    continue;
+  }
+  const cls=r>=15?'heavy':r>=5?'wet':r>=.1?'light':'dry';
+  const symbol=r>=15?'🌧':r>=5?'🌦':r>=.1?'🌤':'☀';
+  cells.push(`<div class="calday ${cls}"><strong>${esc(ddmm(date))}</strong><span>${r===null?'Chuva: sem dados':symbol+' '+fmt(r)+' mm'}</span><small>T máx ${fmt(tmax,0)} °C</small><small>Previsão determinística</small></div>`);
  }
  $('calendar').innerHTML=cells.join('');
+ const summary=$('calendar-coverage');
+ if(summary)summary.innerHTML=`<strong>${shown} de 30 datas</strong> com algum produto validado (${shownGEFS} dias GEFS). ${missing?`As demais ${missing} datas não são exibidas: não há previsão numérica válida. Isso NÃO significa tempo seco.`:'Todos os dias exibidos possuem dados.'} ${shownGEFS?'GEFS tem horizonte maior, mas a frequência é de um único modelo e não é calibrada.':''}`;
 }
+
 function render(){
  const d=state?.deterministic;
  const {stale}=statusBar();

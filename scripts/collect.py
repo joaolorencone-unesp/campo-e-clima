@@ -13,8 +13,10 @@ import time
 from typing import Any
 import requests
 try:
+    from scripts.sources.gefs_extended import collect_gefs_extended
     from scripts.spraying import read_joint_members, mix_joint_hourly, mix_joint_windows2h
 except ModuleNotFoundError:  # CLI invocation: python scripts/collect.py
+    from sources.gefs_extended import collect_gefs_extended
     from spraying import read_joint_members, mix_joint_hourly, mix_joint_windows2h
 try:
     from scripts.sources.free_research import collect_climate_era5, collect_previous_runs, compare_export_provisional, collect_openweather_free
@@ -307,13 +309,25 @@ def main():
     for name, code in MODELS.items():
         try:
             params = {**base_params(), 'models': code, 'hourly': 'precipitation,wind_gusts_10m'}
+            fallback_short_horizon = False
             try:
                 e = fetch(ENSEMBLE_URL, params)
                 gust_request_error = None
             except (ValueError, requests.HTTPError) as exc:
                 # Some ensembles do not expose gusts; rain must still be collected.
+                # A 429 is a RATE LIMIT: do not retry immediately.
+                if isinstance(exc, requests.HTTPError) and exc.response is not None and exc.response.status_code==429:
+                    raise
                 gust_request_error = str(exc)[:180]
                 e = fetch(ENSEMBLE_URL, {**base_params(), 'models': code, 'hourly': 'precipitation'})
+            except requests.Timeout as exc:
+                # Bounded, lighter fallback for models whose full 7-day rain+gust
+                # request times out. Only 4 days of rain: partial coverage is flagged.
+                # No retry cascade and no extra call after explicit HTTP 429.
+                gust_request_error = 'Timeout na chamada completa; tentativa reduzida de chuva: '+str(exc)[:120]
+                e = fetch(ENSEMBLE_URL, {**base_params(), 'models': code,
+                                          'forecast_days':4, 'hourly':'precipitation'})
+                fallback_short_horizon = True
             d = model_daily_rain(e)
             g = model_daily_gust(e)
             hourly_rain = model_hourly_rain(e)
@@ -323,6 +337,8 @@ def main():
                 'grid_lat': e.get('latitude'), 'grid_lon': e.get('longitude'),
                 'collected_at_utc': dt.datetime.now(dt.timezone.utc).isoformat(),
                 'gust_request_error': gust_request_error,
+                'fallback_short_horizon': fallback_short_horizon,
+                'coverage_days': sum(1 for x in d['days'].values() if x),
                 'state': 'ok' if any(d['days'].values()) else 'no_valid_daily_rain_members'}
             if any(d['days'].values()):
                 by_model[name] = d
@@ -387,10 +403,24 @@ def main():
     else:
         slow_sources={
           'nasa_power':collect_nasa_power(enabled=os.environ.get('NASA_POWER_ENABLE')=='1'),
-          'ecmwf_extended':collect_extended(enabled=os.environ.get('ECMWF_EXTENDED_ENABLE')=='1'),
+          'gefs_extended':collect_gefs_extended(enabled=os.environ.get('GEFS_EXTENDED_ENABLE')=='1'),
           'previous_runs':collect_previous_runs(enabled=True)}
         slow_cache.parent.mkdir(parents=True,exist_ok=True)
         slow_cache.write_text(json.dumps({'cache_day':slow_day,'sources':slow_sources},ensure_ascii=False),encoding='utf-8')
+    # ECMWF EC46/SEAS5 changes much more slowly than hourly forecasts.
+    # One request per ISO week across scheduled executions; NO browser requests.
+    seasonal_cache=pathlib.Path('site/data/weekly_sources_cache.json')
+    weekly_key=f'{dt.datetime.now(dt.timezone(dt.timedelta(hours=-4))).isocalendar().year}-W{dt.datetime.now(dt.timezone(dt.timedelta(hours=-4))).isocalendar().week:02d}'
+    seasonal=None
+    if seasonal_cache.is_file():
+        try:
+            previous_seasonal=json.loads(seasonal_cache.read_text(encoding='utf-8'))
+            if previous_seasonal.get('cache_week')==weekly_key:seasonal=previous_seasonal.get('product')
+        except (ValueError,OSError):pass
+    if seasonal is None:
+        seasonal=collect_extended(enabled=os.environ.get('ECMWF_EXTENDED_ENABLE')=='1')
+        seasonal_cache.parent.mkdir(parents=True,exist_ok=True)
+        seasonal_cache.write_text(json.dumps({'cache_week':weekly_key,'product':seasonal},ensure_ascii=False),encoding='utf-8')
     # Thirty-year ERA5-Land baseline refreshes once per local month, separately
     # from the daily supplementary-product cache.
     climate_cache=pathlib.Path('site/data/climate_cache.json')
@@ -412,7 +442,8 @@ def main():
        'openweather': collect_openweather_free(),
        'soil_forecast': collect_soil_forecast(),
        'nasa_power': slow_sources.get('nasa_power',{'state':'requires_setup'}),
-       'ecmwf_extended': slow_sources.get('ecmwf_extended',{'state':'requires_setup'}),
+       'ecmwf_extended':seasonal,
+       'gefs_extended':slow_sources.get('gefs_extended',{'state':'unavailable'}),
        'previous_runs':slow_sources.get('previous_runs',{'state':'unavailable'}),
        'era5_climatology':climate,
        'goes_satellite': {'state':'requires_setup','source':'CPTEC/INPE DSAT GOES-19',

@@ -56,5 +56,6 @@ def test_restriction_cause_inspector_and_historical_reference():
     assert 'motivos' in app.lower() and 'podem coexistir' in app
     assert "models:'era5'" in hist and "models:'era5_land'" in hist
     assert "parseDaily(base)" in hist  # validates non-null rainfall before considering success
-    assert "precipitation_mean" in ext and 'forecast_days' in ext
+    assert "precipitation_mean" in ext and 'data/latest.json' in ext
+    assert 'seasonal-api.open-meteo.com' not in ext # no automatic browser call
     assert "Não" in ext or 'não' in ext

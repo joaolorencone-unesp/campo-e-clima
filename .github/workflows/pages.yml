@@ -43,7 +43,15 @@ jobs:
         uses: actions/cache@v4
         with:
           path: site/data/slow_sources_cache.json
-          key: slow-sources-v12-${{ env.SLOW_DAY }}
+          key: slow-sources-v13-${{ env.SLOW_DAY }}
+      # Seasonal product is checked only once per ISO week, not on every visit.
+      - name: Set ISO week for seasonal cache
+        run: echo "SLOW_WEEK=$(TZ=America/Campo_Grande date +%G-W%V)" >> "$GITHUB_ENV"
+      - name: Restore/cache weekly ECMWF product
+        uses: actions/cache@v4
+        with:
+          path: site/data/weekly_sources_cache.json
+          key: seasonal-v13-${{ env.SLOW_WEEK }}
       - name: Set climatology cache month
         run: echo "CLIMATE_MONTH=$(TZ=America/Campo_Grande date +%Y-%m)" >> "$GITHUB_ENV"
       - name: Restore/cache 1991–2020 climate baseline (monthly)
@@ -54,7 +62,8 @@ jobs:
       - name: Collect forecasts
         env:
           NASA_POWER_ENABLE: '1'
-          ECMWF_EXTENDED_ENABLE: '1' # EC46/SEAS5: consulta leve de MÉDIA semanal, não 51 membros 6h.
+          ECMWF_EXTENDED_ENABLE: '1' # Consultar UMA vez por semana via cache separado.
+          GEFS_EXTENDED_ENABLE: '1' # Uma vez por dia: GEFS 15–35 dias, um único ensemble.
           CLIMATE_ERA5_ENABLE: '0' # Pausada até validar a completude dos 30 anos em grade.
           # Optional NEW secret, used exclusively by free /data/2.5/forecast API.
           OPENWEATHER_FREE_API_KEY: ${{ secrets.OPENWEATHER_FREE_API_KEY }}

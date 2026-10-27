@@ -1,4 +1,4 @@
-# Campo e Clima v0.9 — coordenadas personalizáveis e histórico NASA POWER
+# Campo e Clima v1.3 — meteorologia multimodelo, histórico e operação agrícola
 
 **Novo nesta edição:** formulário de latitude/longitude WGS84, link compartilhável por ponto, consulta direta de Forecast e até oito ensembles da Open-Meteo para coordenadas selecionadas, gráficos NASA POWER (chuva/temperatura histórica), reanálise ERA5-Land, altitude, qualidade do ar e umidade superficial modelada. Sem serviços pagos e sem novas chaves. A publicação permanece pelo GitHub Desktop/Actions. **O GitHub Pages não é um servidor de APIs.**
 
@@ -124,3 +124,9 @@ Quando o usuário seleciona outra coordenada, o sistema não reutiliza a observa
 ## v1.2 — correção histórica e explicação das restrições
 
 [Detalhes científicos e limitações](docs/CORRECOES_V12.md). O quadro de pulverização detalha causas horárias sem converter frequências não calibradas em probabilidades de segurança. Dados históricos: ERA5 para precipitação/atmosfera, ERA5-Land para rajadas/ET₀ onde válidos. Tendências de 15–60 dias: consulta leve do ECMWF Seasonal Ensemble Mean no Actions para Naviraí e por coordenadas no navegador; médias semanais não são P10/P90 ou chuva diária.
+
+## v1.3 — estabilização da previsão estendida, histórico e pulverização
+
+A API sazonal deixou de ser chamada diretamente pelo navegador: os produtos do ECMWF são publicados pelo GitHub Actions com cache de **uma consulta por semana**. Uma recuperação controlada tenta quatro dias de chuva quando algum ensemble apresenta timeout (sem inventar rajadas). Um novo coletor **GEFS diário D15–D35** tenta obter quantis de um único ensemble, sem inventar datas se a API retornar dados incompletos. Calendário mostra apenas dias com previsão válida e informação de cobertura. Em histórico, há tentativa adicional à Open-Meteo `best_match` e alternativa identificada NASA POWER se a precipitação ERA5 estiver inteiramente indisponível. Na pulverização, o resumo destaca fatores limitantes da janela escolhida e o número real de modelos/membros. Não são probabilidades calibradas de segurança.
+
+Leia [documentação científica e limitações v1.3](docs/MELHORIAS_V13.md) e [atualização do GitHub](ATUALIZAR_GITHUB_V13.md). A disponibilidade real das novas consultas será verificada após a primeira execução do GitHub Actions.

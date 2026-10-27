@@ -8,7 +8,7 @@ def test_historical_ui_has_per_day_comparison_and_screening():
     page=(BASE/'site/index.html').read_text(encoding='utf-8')
     for key in ('id="hist-period"','id="hist-daily-plot"','id="hist-compare-plot"',
                 'id="hist-spray-plot"','id="hist-table"','id="hist-station-table"',
-                'id="hist-export"','static/history_v10.js?v=12'):
+                'id="hist-export"','static/history_v10.js?v=13'):
         assert key in page
     assert 'id="archive-rain-plot"' not in page, 'Old empty ERA5 historical chart must not remain'
 

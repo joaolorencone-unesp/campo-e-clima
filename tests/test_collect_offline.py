@@ -30,6 +30,7 @@ def test_collector_builds_json_from_stubbed_api(tmp_path, monkeypatch):
     monkeypatch.setattr(collector, 'collect_soil_forecast', lambda: {'state':'unavailable'})
     monkeypatch.setattr(collector, 'collect_nasa_power', lambda **kw: {'state':'unavailable'})
     monkeypatch.setattr(collector, 'collect_extended', lambda **kw: {'state':'unavailable'})
+    monkeypatch.setattr(collector, 'collect_gefs_extended', lambda **kw: {'state':'unavailable'})
     monkeypatch.setattr(collector, 'collect_previous_runs', lambda **kw: {'state':'unavailable'})
     monkeypatch.setattr(collector, 'collect_climate_era5', lambda **kw: {'state':'unavailable'})
     monkeypatch.setattr(collector, 'collect_openweather_free', lambda: {'state':'optional_free_key'})

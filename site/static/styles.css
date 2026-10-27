@@ -56,3 +56,10 @@
 .reason-track{background:#e8eef2;border-radius:50px;overflow:hidden;height:11px;margin-top:5px}.reason-track span{display:block;height:100%;border-radius:50px;background:#cd6664}
 #spray-inspect-hour{min-width:230px;padding:9px;border:1px solid #cbdfea;border-radius:8px;background:white;color:#23475e}
 @media(max-width:730px){.reason-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* v1.3 — no horizontal scrollbar on desktop, explicit source availability */
+@media(min-width:800px){.tabs{flex-wrap:wrap;overflow:visible;position:relative;gap:7px;padding-bottom:12px}.tabs button{white-space:normal}}
+.calday.gefs{background:#f3f0ff;border-color:#d7ccec}.calday.gefs small{color:#6b6285}
+.gefs-block{border-top:1px solid #d7e6ed;margin-top:24px;padding-top:15px}
+.spray-quick{border:1px solid #e8d6ac;border-left:5px solid #bb782b;background:#fffaed;padding:13px 16px;border-radius:10px;margin:13px 0 2px;font-size:13px;line-height:1.65;color:#59481e}
+.spray-quick strong{color:#834713}.spray-quick em{font-style:normal;color:#6a7584}
