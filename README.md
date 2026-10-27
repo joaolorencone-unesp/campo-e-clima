@@ -1,3 +1,11 @@
+# Campo e Clima v0.9 — coordenadas personalizáveis e histórico NASA POWER
+
+**Novo nesta edição:** formulário de latitude/longitude WGS84, link compartilhável por ponto, consulta direta de Forecast e até oito ensembles da Open-Meteo para coordenadas selecionadas, gráficos NASA POWER (chuva/temperatura histórica), reanálise ERA5-Land, altitude, qualidade do ar e umidade superficial modelada. Sem serviços pagos e sem novas chaves. A publicação permanece pelo GitHub Desktop/Actions. **O GitHub Pages não é um servidor de APIs.**
+
+Documentação: [Coordenadas e fontes v0.9](docs/COORDENADAS_E_FONTES_V09.md) · [Como publicar](ATUALIZAR_GITHUB_v09.md).
+
+---
+
 > **v0.8 — atualização de interface (26/10/2026).** Veja [o que foi corrigido](docs/CHANGELOG_V08.md) e [como instalar](ATUALIZAR_GITHUB_v08.md). O botão consulta diretamente a previsão **determinística** atual da Open-Meteo; os ensembles continuam na coleta do GitHub Actions. Sem novas APIs pagas.
 
 # Campo & Clima 🌦️🌱 — versão 0.7 (somente fontes gratuitas)

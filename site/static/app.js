@@ -12,15 +12,19 @@ const val = (obj,key,i)=>obj?.[key]?.[i] ?? null;
 const ddmm = iso => typeof iso==='string' && /^\d{4}-\d\d-\d\d/.test(iso) ? iso.slice(8,10)+'/'+iso.slice(5,7):iso;
 const hh = iso => iso?.slice(11,13)+'h';
 const dh = iso => ddmm(iso)+' '+hh(iso);
-const dateLocal = () => new Intl.DateTimeFormat('en-CA',{timeZone:'America/Campo_Grande',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+const activeTZ = () => state?.site?.timezone || 'America/Campo_Grande';
+const activeOffset = () => Number.isFinite(state?.deterministic?.utc_offset_seconds) ? state.deterministic.utc_offset_seconds : -14400;
+const offsetISO = (secs) => `${secs < 0?'-':'+'}${String(Math.floor(Math.abs(secs)/3600)).padStart(2,'0')}:${String(Math.floor(Math.abs(secs)%3600/60)).padStart(2,'0')}`;
+const parseGridTime = t => new Date(t + offsetISO(activeOffset()));
+const dateLocal = () => localISO(new Date());
 function localISO(date){ // construct from explicit date components to avoid locale-dependent parsing
- const items = new Intl.DateTimeFormat('en-US',{timeZone:'America/Campo_Grande',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(date);
+ const items = new Intl.DateTimeFormat('en-US',{timeZone:activeTZ(),year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(date);
  const find = t=>items.find(x=>x.type===t)?.value;
  return `${find('year')}-${find('month')}-${find('day')}`;
 }
 function hoursFrom(h,n=72){
  const now=Date.now(); if(!Array.isArray(h?.time)) return [];
- return h.time.map((t,i)=>({t,i,date:new Date(t+'-04:00')}))
+ return h.time.map((t,i)=>({t,i,date:parseGridTime(t)}))
    .filter(x=>Number.isFinite(x.date.getTime()) && x.date.getTime()>=now-3600000).slice(0,n);
 }
 const percent=(p,d=0)=>p==null?'—':fmt(Number(p)*100,d)+'%';
@@ -74,13 +78,17 @@ function statusBar(){
  const stale=age===null||age<0||age>90;
  const liveDate=state?._liveForecastAt?new Date(state._liveForecastAt):null;
  const liveFresh=liveDate && Number.isFinite(liveDate.getTime()) && Date.now()-liveDate.getTime()<90*60000;
- const issuedText=emission?emission.toLocaleString('pt-BR',{timeZone:'America/Campo_Grande',dateStyle:'short',timeStyle:'short'}):'não registrada';
- $('last-updated').textContent=`Ensembles: ${issuedText} (horário de Naviraí)`;
+ const issuedText=emission?emission.toLocaleString('pt-BR',{timeZone:activeTZ(),dateStyle:'short',timeStyle:'short'}):'não registrada';
+ $('last-updated').textContent=`${state?.site?.custom?'Consulta do ponto':'Ensembles'}: ${issuedText} (horário local do ponto)`;
  const modelOK=Object.values(state?.ensemble_models||{}).filter(x=>x.state==='ok'&&x.precipitation_members>0).length;
  const gustOK=Object.values(state?.ensemble_models||{}).filter(x=>x.gust_members>0).length;
- const forecastText=liveFresh?`Previsão determinística consultada diretamente às ${liveDate.toLocaleTimeString('pt-BR',{timeZone:'America/Campo_Grande',hour:'2-digit',minute:'2-digit'})}. `:'';
+ const forecastText=liveFresh?`Previsão determinística consultada diretamente às ${liveDate.toLocaleTimeString('pt-BR',{timeZone:activeTZ(),hour:'2-digit',minute:'2-digit'})}. `:'';
  $('status').classList.toggle('warning',stale);
- if(stale){$('status').innerHTML=`⚠ <strong>Ensembles sem coleta recente (${age==null?'horário desconhecido':age+' min'}).</strong> ${forecastText}Frequências de chuva e rajada estão desatualizadas; não utilizá-las para decisões atuais.`;}
+ if(state?.site?.custom){
+  $('status').innerHTML= modelOK
+    ? `✓ <strong>${modelOK} ensembles de chuva e ${gustOK} com rajadas consultados para o ponto selecionado.</strong> ${forecastText}Dados em grade, sem calibração local; fontes de Naviraí não são reutilizadas.`
+    : `ℹ <strong>Previsão determinística carregada para o ponto selecionado.</strong> Probabilidades dos ensembles ainda não estão disponíveis. ${forecastText}Não confundir esta localidade com Naviraí.`;
+ }else if(stale){$('status').innerHTML=`⚠ <strong>Ensembles sem coleta recente (${age==null?'horário desconhecido':age+' min'}).</strong> ${forecastText}Frequências de chuva e rajada estão desatualizadas; não utilizá-las para decisões atuais.`;}
  else{$('status').innerHTML=`✓ <strong>Ensembles publicados há ${age} min:</strong> ${modelOK} modelos com chuva; ${gustOK} com rajadas. ${forecastText}<strong>Frequências não calibradas.</strong> Observações oficiais têm atualização separada.`;}
  return {stale,age,modelOK,gustOK,issued};
 }
@@ -109,7 +117,7 @@ function renderOverview(idx){
  if(strongest)insights.push({cls:'risk',title:`🌬 Atenção às rajadas: ${ddmm(strongest.date)}`,desc:`Frequência >30 km/h: ${percent(strongest.p_gt_30_kmh)}; >40 km/h: ${percent(strongest.p_gt_40_kmh)}. Apenas ${strongest.model_count} modelos com rajadas válidas.`});
  const nextSpray=idx.map(x=>({...sprayAssessment(h,x.i,'herb'),t:x.t})).filter(x=>x.cls==='bad').slice(0,1);
  if(nextSpray.length)insights.push({cls:'risk',title:`🚁 Pulverização: restrição às ${dh(nextSpray[0].t)}`,desc:nextSpray[0].reasons.join('; ')+'. Confirmar condições no talhão.'});
- insights.push({cls:'',title:'🔬 Grau de certeza',desc:'Os percentuais são frequências entre membros dos ensembles. Ainda não temos histórico observacional auditado para calibrar a previsão em Naviraí.'});
+ insights.push({cls:'',title:'🔬 Grau de certeza',desc:'Os percentuais são frequências entre membros dos ensembles. Ainda não temos histórico observacional auditado para calibrar a previsão neste local.'});
  $('insights').innerHTML=insights.map(x=>`<div class="insight ${x.cls}"><strong>${esc(x.title)}</strong><div>${esc(x.desc)}</div></div>`).join('');
  if(idx.length){
   const x=idx.map(y=>dh(y.t));
@@ -136,7 +144,7 @@ function renderOverview(idx){
  const tomorrowISO=new Date(Date.parse(currentISO+'T12:00:00Z')+86400000).toISOString().slice(0,10);
  const hourRows=(targetDate,isToday)=>{
   if(!Array.isArray(h.time))return [];
-  return h.time.map((t,i)=>({t,i})).filter(x=>x.t.startsWith(targetDate) && (!isToday || new Date(x.t+'-04:00').getTime()>=Date.now()-3600000))
+  return h.time.map((t,i)=>({t,i})).filter(x=>x.t.startsWith(targetDate) && (!isToday || parseGridTime(x.t).getTime()>=Date.now()-3600000))
     .map(({t,i})=>{const rh=val(h,'relative_humidity_2m',i),wind=val(h,'wind_speed_10m',i),gust=val(h,'wind_gusts_10m',i);
       return `<tr><td>${hh(t)}</td>${cell(val(h,'temperature_2m',i))}${cell(rh,rh!==null&&rh<55?'bad':'',0)}${cell(val(h,'precipitation',i))}<td>${percent(wval(t,1,'p_gt_0_1_mm'))}</td><td>${percent(wval(t,1,'p_gt_1_mm'))}</td>${cell(wind,wind!=null&&(wind>10||wind<3)?'bad':'')}${cell(gust,gust!=null&&gust>30?'bad':'')}<td>${esc(directionName(val(h,'wind_direction_10m',i)))}</td></tr>`;
    });
@@ -161,7 +169,7 @@ function renderRain(idx){
  const titles=['Dia','Modelos','Membros','Média mm','P10','P50','P90','>1 mm','>5 mm','>10 mm','>20 mm'];
  tableFill('rain-table',titles,rain.map(z=>`<tr><td>${esc(ddmm(z.date))}</td><td>${z.model_count}</td><td>${z.member_count}</td>${cell(z.mean_mm)}${cell(z.p10_mm)}${cell(z.p50_mm)}${cell(z.p90_mm)}<td>${percent(z.p_gt_1_mm)}</td><td>${percent(z.p_gt_5_mm)}</td><td>${percent(z.p_gt_10_mm)}</td><td>${percent(z.p_gt_20_mm)}</td></tr>`));
  const hr=state?.rain_ensemble_hourly||[];
- const forward=hr.filter(z=>new Date(z.time+'-04:00').getTime()>=Date.now()-3600000).slice(0,72);
+ const forward=hr.filter(z=>parseGridTime(z.time).getTime()>=Date.now()-3600000).slice(0,72);
  if(forward.length){const rx=forward.map(z=>dh(z.time));
    chart('rain-hour-prob',[
      {x:rx,y:forward.map(z=>z.windows?.['1']?.mean_mm??null),type:'bar',name:'Média mm/h',marker:{color:'#76b7df'},hovertemplate:'%{y:.2f} mm/h<extra></extra>'},
@@ -248,7 +256,7 @@ function ensembleScreening(){
  const kind=$('product').value;
  const live=state?.spray_joint_hourly||[];
  const now=Date.now()-3600000;
- const all=live.filter(r=>Number.isFinite(new Date(r.time+'-04:00').getTime()) && new Date(r.time+'-04:00').getTime()>=now);
+ const all=live.filter(r=>Number.isFinite(parseGridTime(r.time).getTime()) && parseGridTime(r.time).getTime()>=now);
  const valid=all.filter(r=>r[kind]?.models>0).slice(0,72);
  const modelStatuses=Object.values(state?.spray_joint_model_status||{});
  const modelsOK=modelStatuses.filter(x=>x.status==='ok');
@@ -279,7 +287,7 @@ function ensembleScreening(){
   x,y:sample.map(r=>(r[kind]?.reasons?.[reason]??0)*100),name:SPRAY_REASONS[reason],
   line:{color:keyColors[reason],width:2.5},marker:{size:5},hovertemplate:'%{y:.1f}% dos membros<extra></extra>'
  })),'Frequência por motivo (%)',{yaxis:{title:'Frequência (%)',range:[0,100],gridcolor:'#edf2f6'}});
- const windows=(state?.spray_joint_windows_2h||[]).filter(r=>new Date(r.start+'-04:00').getTime()>=now && r[kind]?.models>0).slice(0,72);
+ const windows=(state?.spray_joint_windows_2h||[]).filter(r=>parseGridTime(r.start).getTime()>=now && r[kind]?.models>0).slice(0,72);
  const sampledWindows=windows.filter((r,i)=>i%2===0);
  if(sampledWindows.length){chart('spray-2h-plot',[
   {type:'bar',x:sampledWindows.map(r=>dh(r.start)),y:sampledWindows.map(r=>r[kind].passa*100),name:'Ambas as horas passam',marker:{color:SPRAY_COLORS.passa}},
@@ -305,7 +313,7 @@ function renderVerification(){const model=state?.ensemble_models||{};const items
 function renderOfficial(){
  const official=state?.official||{}, alerts=official.inmet_alerts||{}, catalog=official.inmet_stations||{};
  const strip=$('official-alert-strip'), box=$('inmet-alerts');
- const checked=alerts.queried_at_utc?new Date(alerts.queried_at_utc).toLocaleString('pt-BR',{timeZone:'America/Campo_Grande',dateStyle:'short',timeStyle:'short'}):'horário indisponível';
+ const checked=alerts.queried_at_utc?new Date(alerts.queried_at_utc).toLocaleString('pt-BR',{timeZone:activeTZ(),dateStyle:'short',timeStyle:'short'}):'horário indisponível';
  if(alerts.state!=='ok'){
   const msg='⚠ Avisos oficiais INMET: consulta indisponível. Não interprete como ausência de alerta.';
   strip.className='notice warning';strip.textContent=msg;
@@ -483,6 +491,7 @@ async function fetchDirectForecast(){
 }
 let refreshInProgress=false;
 async function refresh(manual=false){
+ if(window.CampoLocation?.isCustom())return window.CampoLocation.refreshCustom(manual);
  if(refreshInProgress)return;
  refreshInProgress=true;
  const button=$('refresh'),prior=state;
@@ -494,15 +503,17 @@ async function refresh(manual=false){
    const published=await fetchWithTimeout(DATA_URL+'?cache='+Date.now(),18);
    if(!published||!published.issued_at_utc||!published.deterministic)throw Error('Publicação sem os campos esperados');
    publishedNew=published.issued_at_utc!==prior?.issued_at_utc;
+   if(window.CampoLocation?.isCustom())return;
    state=published;
    // Preserve the latest direct forecast when GitHub did not publish a newer run.
    if(!publishedNew && prior?._liveForecastAt && Date.now()-new Date(prior._liveForecastAt).getTime()<90*60000){
     state.deterministic=prior.deterministic;state._liveForecastAt=prior._liveForecastAt;
    }
-  }catch(e){errorHosted=e;if(!state)state=prior;}
+  }catch(e){errorHosted=e;if(window.CampoLocation?.isCustom())return;if(!state)state=prior;}
   if(manual){
    try{
     const forecast=await fetchDirectForecast();
+    if(window.CampoLocation?.isCustom())return;
     if(!state)throw Error('A publicação multimodelo ainda não está disponível');
     state.deterministic=forecast;state._liveForecastAt=forecast.collected_at_utc;
     liveNew=true;
@@ -510,7 +521,7 @@ async function refresh(manual=false){
   }
   if(state)render();
   else $('status').textContent='⚠️ Nenhuma coleta meteorológica válida está disponível.';
-  const localTime=new Date().toLocaleTimeString('pt-BR',{timeZone:'America/Campo_Grande',hour:'2-digit',minute:'2-digit'});
+  const localTime=new Date().toLocaleTimeString('pt-BR',{timeZone:activeTZ(),hour:'2-digit',minute:'2-digit'});
   if(liveNew){setRefreshFeedback(`✓ ${localTime}: previsão horária consultada agora na Open-Meteo. Ensembles: última publicação do GitHub.`, 'good');}
   else if(publishedNew){setRefreshFeedback(`✓ ${localTime}: nova coleta do GitHub carregada. ${manual?'A consulta direta não respondeu; previsão do servidor mantida.':''}`, 'good');}
   else if(state){setRefreshFeedback(`ℹ ${localTime}: nenhuma nova coleta publicada. ${errorLive?'Consulta direta indisponível; dados anteriores mantidos.':'Previsão da última coleta mantida.'}`, 'info');}
