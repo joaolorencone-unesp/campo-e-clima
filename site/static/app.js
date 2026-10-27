@@ -269,6 +269,12 @@ function renderSprayWeather(activeDay){
  {x,y:idx.map(z=>val(h,'vapour_pressure_deficit',z.i)),type:'scatter',mode:'lines+markers',name:'VPD',yaxis:'y2',line:{color:'#dc8e4e',width:2.5},hovertemplate:'VPD %{y:.2f} kPa<extra></extra>'}
  ],'UR (%)',{...options,yaxis:{title:'Umidade relativa (%)',range:[0,100]},yaxis2:{title:'VPD (kPa)',overlaying:'y',side:'right',rangemode:'tozero',showgrid:false}});
 }
+function sprayRestrictionExplanation(row,kind){
+ const o=row?.[kind];if(!o)return '<p>Sem amostra conjunta válida.</p>';
+ const causes=Object.entries(o.reasons||{}).filter(([k,v])=>k!=='inversao_nao_verificada'&&Number.isFinite(v)&&v>0).sort((a,b)=>b[1]-a[1]);
+ const bars=causes.map(([key,p])=>`<div class="reason-row"><div><strong>${esc(SPRAY_REASONS[key]||key)}</strong><b>${percent(p)}</b></div><div class="reason-track"><span style="width:${Math.max(0,Math.min(100,p*100))}%"></span></div></div>`).join('');
+ return `<div class="reason-kpis"><span><small>🔴 Pelo menos uma restrição</small><strong class="bad">${percent(o.restrito)}</strong></span><span><small>🟠 Marginal</small><strong class="warn">${percent(o.marginal)}</strong></span><span><small>🟢 Passa filtros</small><strong class="ok">${percent(o.passa)}</strong></span><span><small>⚪ Indeterminada</small><strong>${percent(o.indeterminado??0)}</strong></span></div>${bars||'<p>Nenhum motivo quantificado nos membros restritos; conferir amostra e variáveis.</p>'}<p class="caption">${o.models} modelos; ${o.members} membros completos. Motivos <strong>podem coexistir no mesmo membro</strong>, portanto as porcentagens das barras não somam 100%. Frequências brutas, NÃO probabilidades calibradas de aplicação segura. A inversão pode permanecer indeterminada.</p>`;
+}
 function ensembleScreening(){
  const kind=$('product').value;
  const live=state?.spray_joint_hourly||[];
@@ -292,7 +298,7 @@ function ensembleScreening(){
   pstatus.className='notice warning';
   pstatus.innerHTML='<b>Não há amostra conjunta completa dos ensembles para pulverização.</b> São necessárias as mesmas variáveis e o mesmo identificador de membro. A previsão determinística abaixo continua disponível apenas como referência; <b>não estima probabilidade de cenário.</b>';
   for(const id of ['spray-prob-plot','spray-causes-plot','spray-2h-plot']) {clearPlot(id,'Sem amostra conjunta verificada; não foi atribuída probabilidade.');}
-  $('spray-scenario-cards').innerHTML='';$('spray-best2h').innerHTML='';
+  $('spray-scenario-cards').innerHTML='';$('spray-best2h').innerHTML='';if($('spray-reason-detail'))$('spray-reason-detail').textContent='Sem membros completos: não foi possível identificar as causas.';
   tableFill('spray-ensemble-table',['Hora','Modelos','Membros','Passa','Marginal','Restrita','Indeterminada'],[],'Nenhum membro com todos os campos necessários nesta coleta.');
   return;
  }
@@ -306,6 +312,16 @@ function ensembleScreening(){
  $('spray-scenario-cards').innerHTML=[['Passa filtros (NÃO é liberação)',first.passa,'#1e9c74'],['Marginal',first.marginal,'#d28b22'],['Restrita',first.restrito,'#c24f54'],['Indeterminada (noite/inversão)',first.indeterminado??0,'#8998ad']].map(([label,p,color])=>`<div class="screen-metric"><small>${esc(label)} • ${esc(dh(valid[0].time))}</small><strong style="color:${color}">${percent(p)}</strong><span>Frequência entre ${first.members} membros completos</span></div>`).join('');
  // EVERY valid hour displayed: filter by date if the user wants readable 24h.
  const sample=focused, x=sample.map(r=>dh(r.time));
+ const inspector=$('spray-inspect-hour');
+ if(inspector){
+  const previous=inspector.value;
+  const options=focused.map(r=>`<option value="${esc(r.time)}">${esc(dh(r.time))} · restrita ${percent(r[kind].restrito)} · chuva ${percent(r[kind].reasons?.chuva_3h||0)}</option>`).join('');
+  if(inspector.innerHTML!==options)inspector.innerHTML=options;
+  inspector.value=focused.some(r=>r.time===previous)?previous:(focused.reduce((best,r)=>(!best||r[kind].restrito>best[kind].restrito)?r:best,null)?.time||'');
+  const selected=focused.find(r=>r.time===inspector.value)||focused[0];
+  $('spray-reason-detail').innerHTML=`<strong>Diagnóstico dos membros • ${esc(dh(selected.time))}</strong>`+sprayRestrictionExplanation(selected,kind);
+ }
+
  chart('spray-prob-plot',['passa','marginal','restrito','indeterminado'].map(cls=>({
   type:'bar',x,y:sample.map(r=>(r[kind]?.[cls]??0)*100),name:cls==='passa'?'Passa filtro':cls==='marginal'?'Marginal':cls==='restrito'?'Restrita':'Indeterminada',
   marker:{color:SPRAY_COLORS[cls]},hovertemplate:'%{y:.1f}% dos membros<extra></extra>'
@@ -438,9 +454,14 @@ function renderExtras(){
    chart('soil-forecast-plot',[{type:'scatter',mode:'lines',x:times.map(dh),y:sample,name:'Umidade do solo na grade',line:{color:'#1689aa',width:3}}],'m³/m³',{height:310});
  }else{$('soil-forecast-report').textContent='Umidade do solo em grade indisponível: '+(soil.error||soil.note||'sem dados');clearPlot('soil-forecast-plot','Sem estimativa de umidade do solo.')}
  const ext=c.ecmwf_extended||{},weeks=ext.weeks||[];
- $('extended-weekly').innerHTML=weeks.length
-  ? `<strong>Cenários semanais ECMWF (36 km; não calibrados):</strong><div class="scroll"><table class="compact"><thead><tr><th>Semana</th><th>P10 chuva mm</th><th>P50</th><th>P90</th><th>Membros</th></tr></thead><tbody>${weeks.map(w=>`<tr><td>${esc(w.start)} a ${esc(w.end)}</td><td>${fmt(w.rain_week_p10_mm)}</td><td>${fmt(w.rain_week_p50_mm)}</td><td>${fmt(w.rain_week_p90_mm)}</td><td>${esc(w.member_count)}</td></tr>`).join('')}</tbody></table></div><small>Não é previsão diária para pulverização. Fontes EC46/SEAS5 variam conforme prazo.</small>`
-  : 'ECMWF 15–60 dias: '+esc(ext.note||ext.error||'produto ainda não configurado')+' Os primeiros 14 dias acima permanecem determinísticos.';
+ const customSeasonal=window.CampoLocation?.isCustom?.()===true;
+ const isMean=ext.product==='weekly_ensemble_mean';
+ const displayUnit=ext.precipitation_unit||'unidade não informada';
+ $('extended-weekly').innerHTML=customSeasonal ? 'Tendência da sede de Naviraí não se aplica a estas coordenadas. Veja a consulta personalizada abaixo.' : weeks.length && isMean
+  ? `<strong>ECMWF EC46/SEAS5 — TENDÊNCIA SEMANAL (média dos membros):</strong><div class="scroll"><table class="compact"><thead><tr><th>Semana iniciada em</th><th>Precipitação média (${esc(displayUnit)})</th><th>Anomalia (unidade informada pela API)</th><th>T média °C</th></tr></thead><tbody>${weeks.map(w=>`<tr><td>${esc(w.start)}</td><td>${fmt(w.rain_week_mean_api)}</td><td>${fmt(w.rain_anomaly_api)}</td><td>${fmt(w.temperature_mean_c)}</td></tr>`).join('')}</tbody></table></div><small>Fonte: Open-Meteo Seasonal · resolução ~36 km · MÉDIA DE ENSEMBLE, não P10/P90 nem probabilidade calibrada. Não inferir chuva diária ou horário de pulverização. Validade e disponibilidade variam com EC46/SEAS5.</small>`
+  : weeks.length
+  ? `<strong>Cenários semanais ECMWF:</strong><div class="scroll"><table class="compact"><thead><tr><th>Semana</th><th>P10 mm</th><th>P50 mm</th><th>P90 mm</th><th>Membros</th></tr></thead><tbody>${weeks.map(w=>`<tr><td>${esc(w.start)} a ${esc(w.end)}</td><td>${fmt(w.rain_week_p10_mm)}</td><td>${fmt(w.rain_week_p50_mm)}</td><td>${fmt(w.rain_week_p90_mm)}</td><td>${esc(w.member_count)}</td></tr>`).join('')}</tbody></table></div><small>Frequências não calibradas, grade grosseira.</small>`
+  : '<strong>ECMWF 15–60 dias:</strong> '+esc(ext.error||ext.note||'produto indisponível nesta coleta')+'. Dados faltantes não representam tempo seco.';
  $('source-extra-notes').textContent=owMsg+' Somente fontes gratuitas são consultadas; One Call paga não é utilizada. NASA POWER, ERA5-Land e Previous Runs não são medições de pluviômetros. GOES-19 possui visualização pública externa, sem interpretação automática de imagem local.';
 }
 
@@ -580,6 +601,7 @@ $('tabs').addEventListener('click',event=>{
 });
 $('refresh').addEventListener('click',()=>refresh(true));
 $('product').addEventListener('change',()=>{if(state){renderSpray(hoursFrom(state.deterministic?.hourly,72));ensembleScreening();}});
+$('spray-inspect-hour')?.addEventListener('change',()=>{const r=(state?.spray_joint_hourly||[]).find(x=>x.time===$('spray-inspect-hour').value),kind=$('product').value;if(r&&r[kind])$('spray-reason-detail').innerHTML=`<strong>Diagnóstico dos membros • ${esc(dh(r.time))}</strong>`+sprayRestrictionExplanation(r,kind);});
 $('spray-period').addEventListener('change',()=>{if(state){renderSpray(hoursFrom(state.deterministic?.hourly,72));ensembleScreening();}});
 window.addEventListener('resize',()=>{if(window.Plotly)for(const el of document.querySelectorAll('.tab.active .js-plotly-plot'))Plotly.Plots.resize(el);});
 refresh(false);setInterval(()=>refresh(true),30*60*1000);

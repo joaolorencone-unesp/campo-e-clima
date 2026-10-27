@@ -153,6 +153,98 @@ def collect_nasa_power(*,enabled=False):
     except (requests.RequestException,ValueError,KeyError) as ex:return failure('NASA POWER',URL_POWER,ex)
 
 
+def parse_extended_weekly_mean(payload: dict) -> dict:
+    """Lightweight ECMWF EC46/SEAS5 seasonal *ensemble MEAN*, not member quantiles.
+
+    weekly.precipitation_mean units are taken from API metadata, never assumed
+    to be mm/week. No daily forecast is synthesized from weekly means.
+    """
+    if payload.get('utc_offset_seconds') != -14400:
+        raise ValueError('Seasonal API: esperado America/Campo_Grande UTC−4')
+    w = payload.get('weekly') or {}
+    stamps = w.get('time') or []
+    precip = w.get('precipitation_mean')
+    temp = w.get('temperature_2m_mean')
+    anomaly = w.get('precipitation_anomaly')
+    if not stamps or not isinstance(precip,list) or len(precip)!=len(stamps):
+        raise ValueError('EC46: ausente série semanal de precipitation_mean')
+    unit = (payload.get('weekly_units') or {}).get('precipitation_mean')
+    weeks=[]
+    for i,stamp in enumerate(stamps):
+        try: date=dt.date.fromisoformat(str(stamp)[:10])
+        except ValueError: continue
+        v=precip[i]
+        if isinstance(v,(int,float)) and not isinstance(v,bool) and math.isfinite(v) and v>=0:
+            tv=temp[i] if isinstance(temp,list) and i<len(temp) else None
+            av=anomaly[i] if isinstance(anomaly,list) and i<len(anomaly) else None
+            weeks.append({'start':date.isoformat(),'rain_week_mean_api':round(v,2),
+              'temperature_mean_c':round(tv,1) if isinstance(tv,(int,float)) and math.isfinite(tv) else None,
+              'rain_anomaly_api':round(av,2) if isinstance(av,(int,float)) and math.isfinite(av) else None})
+    if not weeks: raise ValueError('EC46: nenhuma semana com precipitação numérica válida')
+    mon=payload.get('monthly') or {}; months=[]
+    mm=mon.get('precipitation_mean');
+    for i,stamp in enumerate(mon.get('time') or []):
+        v=mm[i] if isinstance(mm,list) and i<len(mm) else None
+        if isinstance(v,(int,float)) and not isinstance(v,bool) and math.isfinite(v) and v>=0:
+            months.append({'start':str(stamp)[:10],'rain_month_mean_api':round(v,2)})
+    return {'state':'ok','source':'ECMWF EC46/SEAS5 (ensemble mean), via Open-Meteo Seasonal',
+      'source_url':'https://open-meteo.com/en/docs/seasonal-forecast-api',
+      'queried_at_utc':now_utc(),'product':'weekly_ensemble_mean','weeks':weeks,'months':months,'monthly_precipitation_unit':(payload.get('monthly_units') or {}).get('precipitation_mean','unidade não informada'),
+      'precipitation_unit':unit or 'unidade não informada',
+      'grid_lat':payload.get('latitude'),'grid_lon':payload.get('longitude'),
+      'note':'MÉDIA de ensemble em grade (~36 km), sem P10/P50/P90. Não é chuva diária; NÃO é previsão calibrada para talhão. O campo precipitation_mean conserva a unidade reportada pela API.'}
+
+
+def collect_extended(*,enabled=False):
+    if not enabled: return {'state':'disabled','source':'ECMWF EC46/SEAS5','source_url':URL_EXTENDED,
+       'note':'Tendência semanal desativada; não extrapolar previsão determinística diária a 60 dias.'}
+    try:
+        # One small call with weekly model MEAN; no 51-member x 60-day 6h payload.
+        data=get_json(URL_EXTENDED,{'latitude':LAT,'longitude':LON,'timezone':TZ,'forecast_days':63,
+            'models':'ecmwf_seasonal_ensemble_mean_seamless',
+            'weekly':'precipitation_mean,precipitation_anomaly,temperature_2m_mean',
+            'monthly':'precipitation_mean'},timeout=45)
+        return parse_extended_weekly_mean(data)
+    except (requests.RequestException, ValueError, TypeError) as ex:
+        return failure('ECMWF tendência semanal — ensemble mean',URL_EXTENDED,ex)
+
+
+def load_export_provisional(path:Path):
+    """Returns audited CSV as *provisional*; NEVER assigns a station ID not in input."""
+    import csv
+    if not path.exists():return {'state':'not_integrated','note':'Exportação histórica ainda não incorporada'}
+    rows=[]; seen=set()
+    try:
+        with path.open(encoding='utf-8-sig',newline='') as f:
+            for row in csv.DictReader(f):
+                day=dt.date.fromisoformat(row['date'])
+                if day<MIN_CONFIRMED_START:raise ValueError('Data anterior ao período presumido de Naviraí')
+                if day in seen:raise ValueError('Data duplicada')
+                seen.add(day)
+                def x(k):
+                    v=row.get(k)
+                    return float(v) if v not in (None,'') else None
+                rain=x('precipitation_mm')
+                if rain is not None and not 0<=rain<=600:raise ValueError('Valor inválido de chuva')
+                rows.append({'date':day.isoformat(),'precipitation_mm':rain,
+                             'temperature_mean_c':x('temperature_mean_c'),
+                             'relative_humidity_mean_pct':x('relative_humidity_mean_pct'),
+                             'wind_mean_m_s':x('wind_mean_m_s'),
+                             'et0_mm_day':x('et0_mm_day'),
+                             'solar_radiation_mj_m2_day':x('solar_radiation_mj_m2_day')})
+        rows.sort(key=lambda r:r['date'])
+        return {'state':'provisional','source':'Embrapa Guia Clima — exportação do usuário',
+                'source_url':'https://www.cpao.embrapa.br/gc/busca-de-dados',
+                'station_id':None,'station_verified':False,'record_count':len(rows),
+                'rain_nonmissing_days':sum(r['precipitation_mm'] is not None for r in rows),
+                'date_first':rows[0]['date'] if rows else None,'date_last':rows[-1]['date'] if rows else None,
+                'excluded_early_records':6,'records':rows,
+                'note':'694 dias provisórios; exportação sem ID da estação, 6 registros anteriores a 01/12/2024 excluídos. Confirmar Naviraí/IFMS na interface antes de usar como verdade observacional.'}
+    except (OSError,UnicodeError,ValueError,KeyError) as ex:
+        return failure('Embrapa Guia Clima',str(path),ex,state='invalid')
+
+
+# Backward-compatible parser for historical 6-hour-member test fixtures; no longer used for live collection.
 def parse_extended_ecmwf(payload:dict, *,day0:dt.date|None=None):
     """Summarize EC46/SEAS5 seamless into week-scale 7-day member scenarios.
 
@@ -191,47 +283,3 @@ def parse_extended_ecmwf(payload:dict, *,day0:dt.date|None=None):
             'queried_at_utc':now_utc(),'weeks':weeks,
             'note':'Cenários NÃO calibrados, resolução espacial ~36km. Não extrapolar para chuva diária ou agendar pulverização.'}
 
-
-def collect_extended(*,enabled=False):
-    if not enabled:return {'state':'disabled','source':'ECMWF EC46/SEAS5','source_url':URL_EXTENDED,
-       'note':'Consulta pausada na v0.8: timeouts recorrentes; não há tendência semanal validada. Foco nos dados Open-Meteo de curto prazo.'}
-    try:
-        data=get_json(URL_EXTENDED,{'latitude':LAT,'longitude':LON,'timezone':TZ,'forecast_days':60,
-                   'models':'ecmwf_seasonal_seamless','hourly':'precipitation'},timeout=45)
-        return parse_extended_ecmwf(data)
-    except (requests.RequestException, ValueError, TypeError) as ex:return failure('ECMWF EC46/SEAS5',URL_EXTENDED,ex)
-
-
-def load_export_provisional(path:Path):
-    """Returns audited CSV as *provisional*; NEVER assigns a station ID not in input."""
-    import csv
-    if not path.exists():return {'state':'not_integrated','note':'Exportação histórica ainda não incorporada'}
-    rows=[]; seen=set()
-    try:
-        with path.open(encoding='utf-8-sig',newline='') as f:
-            for row in csv.DictReader(f):
-                day=dt.date.fromisoformat(row['date'])
-                if day<MIN_CONFIRMED_START:raise ValueError('Data anterior ao período presumido de Naviraí')
-                if day in seen:raise ValueError('Data duplicada')
-                seen.add(day)
-                def x(k):
-                    v=row.get(k)
-                    return float(v) if v not in (None,'') else None
-                rain=x('precipitation_mm')
-                if rain is not None and not 0<=rain<=600:raise ValueError('Valor inválido de chuva')
-                rows.append({'date':day.isoformat(),'precipitation_mm':rain,
-                             'temperature_mean_c':x('temperature_mean_c'),
-                             'relative_humidity_mean_pct':x('relative_humidity_mean_pct'),
-                             'wind_mean_m_s':x('wind_mean_m_s'),
-                             'et0_mm_day':x('et0_mm_day'),
-                             'solar_radiation_mj_m2_day':x('solar_radiation_mj_m2_day')})
-        rows.sort(key=lambda r:r['date'])
-        return {'state':'provisional','source':'Embrapa Guia Clima — exportação do usuário',
-                'source_url':'https://www.cpao.embrapa.br/gc/busca-de-dados',
-                'station_id':None,'station_verified':False,'record_count':len(rows),
-                'rain_nonmissing_days':sum(r['precipitation_mm'] is not None for r in rows),
-                'date_first':rows[0]['date'] if rows else None,'date_last':rows[-1]['date'] if rows else None,
-                'excluded_early_records':6,'records':rows,
-                'note':'694 dias provisórios; exportação sem ID da estação, 6 registros anteriores a 01/12/2024 excluídos. Confirmar Naviraí/IFMS na interface antes de usar como verdade observacional.'}
-    except (OSError,UnicodeError,ValueError,KeyError) as ex:
-        return failure('Embrapa Guia Clima',str(path),ex,state='invalid')

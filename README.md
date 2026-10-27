@@ -119,3 +119,8 @@ A aba de pulverização apresenta gráficos da previsão **determinística por h
 Na aba Observações & fontes, o sistema tenta ler a estação [S735 — Naviraí (Faz. Santa Helena do Pindo)](https://apitempo.inmet.gov.br/estacoes/T), entidade SEMADESC-MS, a cerca de 37,6 km da sede. A consulta horária é **experimental** e pode não funcionar fora dos sistemas oficiais do INMET; os códigos distinguem `ok`, `no_data` e `unavailable` sem criar medições. [Documentação detalhada](docs/PULVERIZACAO_HORARIA_INMET_V11.md).
 
 Quando o usuário seleciona outra coordenada, o sistema não reutiliza a observação S735 nem o aviso de Naviraí como se fossem medições daquele talhão. Os próprios ensembles são atualizados para o ponto conforme disponibilidade.
+
+
+## v1.2 — correção histórica e explicação das restrições
+
+[Detalhes científicos e limitações](docs/CORRECOES_V12.md). O quadro de pulverização detalha causas horárias sem converter frequências não calibradas em probabilidades de segurança. Dados históricos: ERA5 para precipitação/atmosfera, ERA5-Land para rajadas/ET₀ onde válidos. Tendências de 15–60 dias: consulta leve do ECMWF Seasonal Ensemble Mean no Actions para Naviraí e por coordenadas no navegador; médias semanais não são P10/P90 ou chuva diária.
