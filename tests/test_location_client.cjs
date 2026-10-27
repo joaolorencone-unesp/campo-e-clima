@@ -34,10 +34,10 @@ assert.strictEqual(out.gust_ensemble_daily[0].model_count,2);
 assert.strictEqual(out.rain_ensemble_hourly[0].windows['3'].model_count||out.rain_ensemble_hourly[0].windows['3'].models,2);
 assert.strictEqual(weightedQuantile([[0,.5],[20,.5]],.5),0);
 const {readJoint,mixJointEvent}=context.window.CampoLocation._test;
-const shortDates=dates.slice(0,6);const jh={time:shortDates};
+const shortDates=Array.from({length:7},(_,i)=>`2026-10-27T${String(i+9).padStart(2,'0')}:00`);const jh={time:shortDates};
 const six=['temperature_2m','relative_humidity_2m','wind_speed_10m','wind_gusts_10m','wind_direction_10m','precipitation'];
 const nums={temperature_2m:25,relative_humidity_2m:80,wind_speed_10m:6,wind_gusts_10m:15,wind_direction_10m:135,precipitation:0};
-for(const key of six){jh[key+'_member00']=Array(6).fill(nums[key]);jh[key+'_member01']=Array(6).fill(nums[key]);}
+for(const key of six){jh[key+'_member00']=Array(7).fill(nums[key]);jh[key+'_member01']=Array(7).fill(nums[key]);}
 jh.wind_gusts_10m_member00[1]=30;
 const joint=readJoint({hourly:jh});assert.strictEqual(joint.members_available,2);
 const hourly=mixJointEvent({A:joint},'hour'),win=mixJointEvent({A:joint},'window');
@@ -45,4 +45,7 @@ assert.strictEqual(hourly[0].herb.passa,1);
 assert.strictEqual(hourly[1].herb.restrito,.5);
 assert.strictEqual(win[0].herb.passa,.5,'Same member must meet filters for two consecutive hours');
 assert.strictEqual(win[0].herb.restrito,.5);
+const nightDates=Array.from({length:7},(_,i)=>new Date(Date.UTC(2026,9,27,19+i)).toISOString().slice(0,16));
+const nightH={time:nightDates};for(const key of six)nightH[key+'_member00']=Array(7).fill(nums[key]);
+assert.strictEqual(mixJointEvent({A:readJoint({hourly:nightH})},'hour')[0].herb.indeterminado,1);
 console.log('PASS coordinate bounds, NASA missingness, ensemble weighting, joint 2h spraying windows.');

@@ -95,48 +95,49 @@ function readJoint(payload){
  let common=null;for(const f of JOINT_KEYS){const ids=new Set(byField[f].keys());common=common===null?ids:new Set([...common].filter(x=>ids.has(x)));}
  const output={members_available:common?.size||0,times:{}};
  if(!common?.size)return output;
- for(let i=0;i<Math.min(times.length-2,74);i++){
-  const stamps=times.slice(i,i+3).map(t=>Date.parse(t+'Z'));
-  if(stamps.length!==3||stamps.some((x,j)=>j&&x-stamps[j-1]!==3600000))continue;
+ for(let i=0;i<Math.min(times.length-3,74);i++){
+  const stamps=times.slice(i,i+4).map(t=>Date.parse(t+'Z'));
+  if(stamps.length!==4||stamps.some((x,j)=>j&&x-stamps[j-1]!==3600000))continue;
   const obj={};for(const id of common){
    const v={};let good=true;
    for(const f of JOINT_KEYS){const x=byField[f].get(id)[i];if(!finite(x)){good=false;break;}v[f]=x;}
    if(!good)continue;
-   const nextRain=byField.precipitation.get(id).slice(i,i+3);
+   const nextRain=byField.precipitation.get(id).slice(i+1,i+4);
    if(nextRain.length!==3||nextRain.some(x=>!finite(x)||x<0))continue;
    v.rain3=nextRain.reduce((a,b)=>a+b,0);
    if(v.relative_humidity_2m<0||v.relative_humidity_2m>100||v.wind_speed_10m<0||v.wind_gusts_10m<0||v.wind_direction_10m<0||v.wind_direction_10m>360)continue;
-   obj[id]=Object.fromEntries(JOINT_KINDS.map(kind=>[kind,jointAssessment(v,kind)]));
+   obj[id]=Object.fromEntries(JOINT_KINDS.map(kind=>[kind,jointAssessment(v,kind,Number(times[i].slice(11,13)))]));
   }if(Object.keys(obj).length)output.times[times[i]]=obj;
  }
  return output;
 }
-function jointAssessment(v,kind){
+function jointAssessment(v,kind,localHour=null){
  const t=v.temperature_2m,rh=v.relative_humidity_2m,w=v.wind_speed_10m,g=v.wind_gusts_10m;
  const vpd=.6108*Math.exp(17.27*t/(t+237.3))*(1-rh/100);
  const reasons=[];
  if(w<3||w>10)reasons.push('vento');if(g>25)reasons.push('rajadas');if(t>=30)reasons.push('temperatura');if(rh<55)reasons.push('umidade');if(vpd>=JOINT_LIMITS[kind])reasons.push('vpd');if(v.rain3>.1)reasons.push('chuva_3h');
  if(reasons.length)return {cls:'restrito',reasons};
+ if(localHour!==null&&(localHour<7||localHour>=18))return {cls:'indeterminado',reasons:['inversao_nao_verificada']};
  return (w>8||g>20||rh<60||t>=28||vpd>JOINT_LIMITS[kind]*.85||v.rain3>0)?{cls:'marginal',reasons:[]}:{cls:'passa',reasons:[]};
 }
 function mixJointEvent(byModel, field){
  const time=[...new Set(Object.values(byModel).flatMap(m=>Object.keys(m.times||{})))].sort();const result=[];
  const summary=({modelEntries,kind})=>{
   const entries=modelEntries.filter(([,m])=>Object.keys(m).length);if(!entries.length)return null;
-  const weights={passa:0,marginal:0,restrito:0},reasons={};let members=0;
+  const weights={passa:0,marginal:0,restrito:0,indeterminado:0},reasons={};let members=0;
   for(const [,byMember] of entries){const ids=Object.keys(byMember);members+=ids.length;
    for(const value of Object.values(byMember)){const w=1/entries.length/ids.length;const assessment=value[kind];
     if(!assessment)continue;weights[assessment.cls]+=w;
     for(const cause of assessment.reasons)reasons[cause]=(reasons[cause]||0)+w;
    }
   }
-  return {models:entries.length,members,passa:weights.passa,marginal:weights.marginal,restrito:weights.restrito,reasons};
+  return {models:entries.length,members,passa:weights.passa,marginal:weights.marginal,restrito:weights.restrito,indeterminado:weights.indeterminado,reasons};
  };
  for(const t of time){let entry=[];
   if(field==='hour'){entry=Object.entries(byModel).filter(([,m])=>m.times?.[t]).map(([name,m])=>[name,m.times[t]]);}
   else{const end=new Date(Date.parse(t+'Z')+3600000).toISOString().slice(0,16);
    entry=Object.entries(byModel).map(([name,m])=>{const a=m.times?.[t],b=m.times?.[end];if(!a||!b)return [name,{}];const both={};
-    for(const id of Object.keys(a)){if(!b[id])continue;both[id]={};for(const kind of JOINT_KINDS){const aa=a[id][kind],bb=b[id][kind];const cls=[aa.cls,bb.cls].includes('restrito')?'restrito':[aa.cls,bb.cls].includes('marginal')?'marginal':'passa';both[id][kind]={cls,reasons:[...new Set([...aa.reasons,...bb.reasons])]};}}
+    for(const id of Object.keys(a)){if(!b[id])continue;both[id]={};for(const kind of JOINT_KINDS){const aa=a[id][kind],bb=b[id][kind];const cls=[aa.cls,bb.cls].includes('restrito')?'restrito':[aa.cls,bb.cls].includes('indeterminado')?'indeterminado':[aa.cls,bb.cls].includes('marginal')?'marginal':'passa';both[id][kind]={cls,reasons:[...new Set([...aa.reasons,...bb.reasons])]};}}
     return [name,both];}).filter(([,m])=>Object.keys(m).length);
   }
   if(!entry.length)continue;

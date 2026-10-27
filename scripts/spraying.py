@@ -20,6 +20,8 @@ SCREEN = {
     'temperature_max_c': 30.0,
     'rh_min_pct': 55.0,
     'rain_next_3h_max_mm': 0.1,
+    'daylight_start_hour': 7,
+    'daylight_end_hour_exclusive': 18,
     'vpd_max_kpa': {'herb': 1.2, 'fung': 1.5, 'insect': 1.4},
 }
 SPECS = ('temperature_2m', 'relative_humidity_2m', 'wind_speed_10m',
@@ -46,7 +48,7 @@ def member_vpd(t: float, rh: float) -> float:
     return 0.6108 * math.exp(17.27 * t / (t + 237.3)) * (1 - rh / 100.0)
 
 
-def classify_member(values: dict[str, float], kind: str) -> tuple[str, set[str]]:
+def classify_member(values: dict[str, float], kind: str, local_hour: int | None = None) -> tuple[str, set[str]]:
     reasons = set()
     t, rh = values['temperature_2m'], values['relative_humidity_2m']
     wind, gust = values['wind_speed_10m'], values['wind_gusts_10m']
@@ -61,6 +63,10 @@ def classify_member(values: dict[str, float], kind: str) -> tuple[str, set[str]]
     if vpd >= SCREEN['vpd_max_kpa'][kind]: reasons.add('vpd')
     if rain3 > SCREEN['rain_next_3h_max_mm']: reasons.add('chuva_3h')
     if reasons: return 'restrito', reasons
+    # Night/early morning: grid weather alone cannot rule out inversion or
+    # weak turbulence. Do not rank a night hour as suitable to spray.
+    if local_hour is not None and not (SCREEN['daylight_start_hour'] <= local_hour < SCREEN['daylight_end_hour_exclusive']):
+        return 'indeterminado', {'inversao_nao_verificada'}
     # Potentially borderline even if strict screening thresholds have not been crossed.
     if (wind > 8 or gust > 20 or rh < 60 or t >= 28 or
         vpd > SCREEN['vpd_max_kpa'][kind]*0.85 or rain3 > 0):
@@ -82,10 +88,11 @@ def read_joint_members(payload: dict, max_hours: int = 74) -> dict:
         return {'members_available': 0, 'times': {}}
     out: dict[str, dict] = {}
     for i, stamp in enumerate(times[:max_hours]):
-        if i + 3 > len(times):
+        # We need current data at i and the three FUTURE rain hours i+1..i+3.
+        if i + 4 > len(times):
             continue
         try:
-            t = [dt.datetime.fromisoformat(s) for s in times[i:i+3]]
+            t = [dt.datetime.fromisoformat(s) for s in times[i:i+4]]
             if any((b-a) != dt.timedelta(hours=1) for a,b in zip(t,t[1:])):
                 continue
         except ValueError:
@@ -94,13 +101,13 @@ def read_joint_members(payload: dict, max_hours: int = 74) -> dict:
         for member in sorted(member_ids):
             try:
                 values = {name: keyed[name][member][i] for name in SPECS}
-                rain = keyed['precipitation'][member][i:i+3]
+                rain = keyed['precipitation'][member][i+1:i+4]
                 if len(rain) != 3 or any(not finite(x) for x in rain):
                     continue
                 if any(not finite(x) for x in values.values()):
                     continue
                 values['rain_next_3h_mm'] = sum(rain)
-                statuses = {kind: classify_member(values, kind) for kind in CATEGORIES}
+                statuses = {kind: classify_member(values, kind, dt.datetime.fromisoformat(stamp).hour) for kind in CATEGORIES}
                 if any(v[0]=='invalid' for v in statuses.values()):
                     continue
                 event[member] = statuses
@@ -115,7 +122,7 @@ def _summarize(candidates: dict[str, dict[str, tuple[str, set[str]]]], kind: str
     valid = {name: members for name, members in candidates.items() if members}
     if not valid: return None
     model_weight = 1/len(valid)
-    mass = {'passa': 0., 'marginal': 0., 'restrito': 0.}
+    mass = {'passa': 0., 'marginal': 0., 'restrito': 0., 'indeterminado': 0.}
     reason_mass = defaultdict(float)
     n = 0
     for model, members in valid.items():
@@ -130,6 +137,7 @@ def _summarize(candidates: dict[str, dict[str, tuple[str, set[str]]]], kind: str
     return {'models': len(valid), 'members': n,
             'passa': round(mass['passa'],4), 'marginal': round(mass['marginal'],4),
             'restrito': round(mass['restrito'],4),
+            'indeterminado': round(mass['indeterminado'],4),
             'reasons': {key:round(v,4) for key,v in sorted(reason_mass.items())}}
 
 
@@ -165,6 +173,7 @@ def mix_joint_windows2h(by_model: dict[str, dict]) -> list[dict]:
                     ca,ra=a[member][kind];cb,rb=b[member][kind]
                     if 'invalid' in (ca,cb):c='invalid'
                     elif 'restrito' in (ca,cb):c='restrito'
+                    elif 'indeterminado' in (ca,cb):c='indeterminado'
                     elif 'marginal' in (ca,cb):c='marginal'
                     else:c='passa'
                     combined[kind]=(c,ra|rb)

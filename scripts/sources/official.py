@@ -125,9 +125,92 @@ def collect_official() -> dict:
         except (requests.RequestException, ValueError, TypeError) as ex:
             out[key]={'state':'unavailable','source_url':url,'queried_at_utc':now_utc(),
                       'error':str(ex)[:210], 'note':'Falha de coleta não significa ausência de risco.'}
+    out['inmet_hourly_nearby']=collect_nearby_station_hourly(out.get('inmet_stations',{}))
     out['inmet_daily_nearby']=collect_nearby_station_daily(out.get('inmet_stations',{}))
     return out
 
+
+
+def parse_inmet_hourly(payload: Any, *, station_code: str) -> dict:
+    """Parse public INMET-style hourly records; preserve source station identity.
+
+    INMET automatic-station DT_MEDICAO/HR_MEDICAO are conventionally UTC.
+    Do not treat observations from a nearby station as measurements at the farm.
+    An empty response does not equal calm weather, and a 204 never equals no rain.
+    """
+    from zoneinfo import ZoneInfo
+    if not isinstance(payload, list):
+        raise ValueError('INMET hourly response is not a JSON list')
+    local=ZoneInfo('America/Campo_Grande');records={}
+    for r in payload:
+        if not isinstance(r,dict):continue
+        station=str(r.get('CD_ESTACAO') or station_code).strip()
+        if station != station_code:raise ValueError('INMET returned records from another station')
+        raw_day=str(r.get('DT_MEDICAO') or '')[:10]
+        raw_hour=str(r.get('HR_MEDICAO') or '').strip().zfill(4)
+        if len(raw_hour)!=4 or not raw_hour.isdigit():continue
+        hh,mm=int(raw_hour[:2]),int(raw_hour[2:])
+        if hh>=24 or mm>=60:continue
+        try:utc=dt.datetime.fromisoformat(raw_day).replace(hour=hh,minute=mm,tzinfo=dt.timezone.utc)
+        except ValueError:continue
+        def obs(*keys,low=-float('inf'),high=float('inf')):
+            for key in keys:
+                raw=r.get(key)
+                if raw is None or str(raw).strip().lower() in ('','null','none','nan','-9999'):continue
+                try:
+                    val=float(str(raw).replace(',','.'))
+                    if math.isfinite(val) and low<=val<=high:return val
+                except ValueError:pass
+            return None
+        wind_ms=obs('VEN_VEL',low=0,high=80)
+        gust_ms=obs('VEN_RAJ',low=0,high=120)
+        record={
+            'valid_at_utc':utc.isoformat(timespec='minutes'),
+            'valid_at_local':utc.astimezone(local).isoformat(timespec='minutes'),
+            'temperature_c':obs('TEM_INS',low=-50,high=65),
+            'rh_pct':obs('UMD_INS',low=0,high=100),
+            'precipitation_previous_hour_mm':obs('CHUVA',low=0,high=300),
+            'wind_kmh':round(wind_ms*3.6,2) if wind_ms is not None else None,
+            'gust_kmh':round(gust_ms*3.6,2) if gust_ms is not None else None,
+            'wind_from_deg':obs('VEN_DIR',low=0,high=360),
+        }
+        if any(record.get(k) is not None for k in ('temperature_c','rh_pct','precipitation_previous_hour_mm','wind_kmh','gust_kmh')):
+            records[record['valid_at_utc']]=record
+    return {'state':'ok' if records else 'no_data','station_code':station_code,
+            'records':sorted(records.values(),key=lambda v:v['valid_at_utc'])[-72:],
+            'data_type':'OBSERVAÇÃO DE ESTAÇÃO VIZINHA (NÃO É PREVISÃO)',
+            'time_note':'INMET DT_MEDICAO/HR_MEDICAO interpretados como UTC e convertidos para UTC−4. Conferir documentação da estação.',
+            'units_note':'VEN_VEL/VEN_RAJ em m/s na origem, convertidos para km/h; CHUVA em mm na hora anterior.',
+            'representativeness':'Medições pontuais da estação, não do talhão; interpolação espacial não aplicada.'}
+
+
+def collect_nearby_station_hourly(station_meta:dict, *, max_distance_km:int=120)->dict:
+    """Best-effort *documented observed* hourly endpoint; fail closed on blocks.
+
+    Automatic station data may be restricted to INMET official interfaces.
+    We do not automate authentication bypass or scraped portals.
+    """
+    out={'state':'unavailable','source':'INMET — observações horárias (estação próxima)',
+         'queried_at_utc':now_utc(),'source_url':'https://apitempo.inmet.gov.br/',
+         'note':'Sem leitura não significa sem vento/sem chuva. Fonte INMET ou rede integrada; conferir entidade operadora.'}
+    if station_meta.get('state')!='ok':return {**out,'error':'Catálogo de estações não retornou'}
+    options=[x for x in station_meta.get('nearest',[]) if x['distance_km']<=max_distance_km and str(x['status']).casefold()=='operante']
+    if not options:return {**out,'state':'not_covered','error':'Sem estação listada como operante nesta distância'}
+    station=options[0]
+    today=dt.datetime.now(dt.timezone.utc).date()
+    start=today-dt.timedelta(days=3)
+    url=f'https://apitempo.inmet.gov.br/estacao/{start.isoformat()}/{today.isoformat()}/{station["station_code"]}'
+    common={**out,'station_code':station['station_code'],'station_name':station['name'],
+            'distance_km':station['distance_km'],'entity':station.get('entity'),'source_url':url}
+    try:
+        parsed=parse_inmet_hourly(http_json(url, timeout=12),station_code=station['station_code'])
+        return {**common,**parsed}
+    except (requests.RequestException, ValueError, TypeError) as exc:
+        # Errors may include full URL, but no tokens are used in this public call.
+        return {**common,'error':str(exc)[:210],
+                'fallback_url':'https://tempo.inmet.gov.br/TabelaEstacoes',
+                'import_url':'https://portal.inmet.gov.br/dadoshistoricos/',
+                'note':'Endpoint de observações não acessível no ambiente de coleta. Tabela oficial e ZIPs históricos são alternativas gratuitas.'}
 
 def parse_inmet_daily(payload:Any, *, station_code:str) -> dict:
     """Read only observed daily INMET station series; not a Naviraí measurement.

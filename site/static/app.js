@@ -226,6 +226,8 @@ function sprayAssessment(h,i,kind){
  const future=(h.precipitation||[]).slice(i+1,i+4);
  if(future.length===3&&future.every(x=>num(x)!==null)&&future.some(x=>x>0.1))reasons.push('Chuva nas próximas 3h');
  if(reasons.length)return {cls:'bad',label:'Restrição meteorológica',reasons};
+ const localHour=Number((h.time||[])[i]?.slice(11,13));
+ if(localHour<7||localHour>=18)return {cls:'na',label:'Indeterminado · inversão',reasons:['Período noturno: inversão e estabilidade não verificadas']};
  if(future.length!==3||future.some(x=>num(x)===null))return {cls:'na',label:'Indeterminado',reasons:['Chuva futura incompleta']};
  return {cls:'warn',label:'Candidata / validar campo',reasons:['Inversão, bula e deriva não verificadas']};
 }
@@ -249,15 +251,40 @@ function renderSpray(idx){
 // of separate probabilities; all percentages are uncalibrated frequencies.
 const SPRAY_REASONS = {'vento':'Vento fora de 3–10 km/h','rajadas':'Rajadas >25 km/h',
   'umidade':'UR <55%','temperatura':'T ≥30°C','vpd':'VPD acima da triagem',
-  'chuva_3h':'Chuva nas próximas 3h'};
+  'chuva_3h':'Chuva nas próximas 3h','inversao_nao_verificada':'Noite: inversão não verificada'};
 const SCREEN_KIND = {herb:'Herbicidas',fung:'Fungicidas',insect:'Inseticidas'};
-const SPRAY_COLORS={passa:'#1e9c74',marginal:'#e8a842',restrito:'#d45b60'};
+const SPRAY_COLORS={passa:'#1e9c74',marginal:'#e8a842',restrito:'#d45b60',indeterminado:'#8998ad'};
+function renderSprayWeather(activeDay){
+ const h=state?.deterministic?.hourly||{},idx=hoursFrom(h,72).filter(z=>activeDay==='all'||z.t.slice(0,10)===activeDay);
+ if(!idx.length){clearPlot('spray-hourly-wind','Previsão determinística indisponível para esse dia.');clearPlot('spray-hourly-atmos','Sem dados de UR/VPD.');return;}
+ const x=idx.map(z=>dh(z.t));
+ const options={xaxis:{type:'category',tickangle:-35,nticks:12,gridcolor:'#edf2f6'}};
+ chart('spray-hourly-wind',[
+ {x,y:idx.map(z=>val(h,'wind_speed_10m',z.i)),type:'scatter',mode:'lines+markers',name:'Vento médio 10m',line:{color:'#147ca1',width:2.6},hovertemplate:'%{y:.1f} km/h<extra></extra>'},
+ {x,y:idx.map(z=>val(h,'wind_gusts_10m',z.i)),type:'scatter',mode:'lines+markers',name:'Rajada 10m',line:{color:'#db8651',width:2.6},hovertemplate:'%{y:.1f} km/h<extra></extra>'},
+ {x,y:idx.map(()=>10),type:'scatter',mode:'lines',name:'Limite superior de triagem (10 km/h)',line:{color:'#c4445a',dash:'dot',width:1.5},hoverinfo:'skip'}
+ ],'km/h',{...options});
+ chart('spray-hourly-atmos',[
+ {x,y:idx.map(z=>val(h,'relative_humidity_2m',z.i)),type:'scatter',mode:'lines+markers',name:'UR',line:{color:'#148dba',width:2.5},hovertemplate:'UR %{y:.0f}%<extra></extra>'},
+ {x,y:idx.map(z=>val(h,'vapour_pressure_deficit',z.i)),type:'scatter',mode:'lines+markers',name:'VPD',yaxis:'y2',line:{color:'#dc8e4e',width:2.5},hovertemplate:'VPD %{y:.2f} kPa<extra></extra>'}
+ ],'UR (%)',{...options,yaxis:{title:'Umidade relativa (%)',range:[0,100]},yaxis2:{title:'VPD (kPa)',overlaying:'y',side:'right',rangemode:'tozero',showgrid:false}});
+}
 function ensembleScreening(){
  const kind=$('product').value;
  const live=state?.spray_joint_hourly||[];
  const now=Date.now()-3600000;
  const all=live.filter(r=>Number.isFinite(parseGridTime(r.time).getTime()) && parseGridTime(r.time).getTime()>=now);
  const valid=all.filter(r=>r[kind]?.models>0).slice(0,72);
+ const periodSelect=$('spray-period');
+ if(periodSelect){
+  const prev=periodSelect.value;const days=[...new Set(valid.map(r=>r.time.slice(0,10)))];
+  const options=['<option value="all">72 horas completas (1h)</option>',...days.map(d=>`<option value="${d}">${d.slice(8,10)}/${d.slice(5,7)} — hora a hora</option>`)].join('');
+  if(periodSelect.innerHTML!==options)periodSelect.innerHTML=options;
+  periodSelect.value=prev&&([...days,'all'].includes(prev))?prev:(days[0]||'all');
+ }
+ const activeDay=periodSelect?.value||'all';
+ const focused=valid.filter(r=>activeDay==='all'||r.time.startsWith(activeDay));
+ renderSprayWeather(activeDay);
  const modelStatuses=Object.values(state?.spray_joint_model_status||{});
  const modelsOK=modelStatuses.filter(x=>x.status==='ok');
  const pstatus=$('spray-ensemble-status');
@@ -266,20 +293,21 @@ function ensembleScreening(){
   pstatus.innerHTML='<b>Não há amostra conjunta completa dos ensembles para pulverização.</b> São necessárias as mesmas variáveis e o mesmo identificador de membro. A previsão determinística abaixo continua disponível apenas como referência; <b>não estima probabilidade de cenário.</b>';
   for(const id of ['spray-prob-plot','spray-causes-plot','spray-2h-plot']) {clearPlot(id,'Sem amostra conjunta verificada; não foi atribuída probabilidade.');}
   $('spray-scenario-cards').innerHTML='';$('spray-best2h').innerHTML='';
-  tableFill('spray-ensemble-table',['Hora','Modelos','Membros','Passa','Marginal','Restrita'],[],'Nenhum membro com todos os campos necessários nesta coleta.');
+  tableFill('spray-ensemble-table',['Hora','Modelos','Membros','Passa','Marginal','Restrita','Indeterminada'],[],'Nenhum membro com todos os campos necessários nesta coleta.');
   return;
  }
  pstatus.className='notice muted';
  const allModels=[...new Set(valid.map(z=>z[kind].models))];
  const allMembers=[...new Set(valid.map(z=>z[kind].members))];
- pstatus.innerHTML=`<strong>${modelsOK.length} de 8 modelos</strong> forneceram pelo menos uma hora com membros completos. Amostra conjunta por hora: <strong>${allModels.join('–')} modelos</strong> e <strong>${allMembers.join('–')} membros</strong>. VPD calculado por temperatura e UR do mesmo membro (equação FAO). <strong>Amostra válida não significa aplicação liberada.</strong>`;
- const cards=valid.slice(0,1).map(r=>r[kind]);
+ pstatus.innerHTML=`<strong>FREQUÊNCIA DE CENÁRIOS, NÃO PROBABILIDADE CALIBRADA.</strong> <strong>${modelsOK.length} de 8 modelos</strong> forneceram pelo menos uma hora com membros completos. Amostra conjunta por hora: <strong>${allModels.join('–')} modelos</strong> e <strong>${allMembers.join('–')} membros</strong>. VPD calculado por temperatura e UR do mesmo membro (equação FAO). <strong>Amostra válida não significa aplicação liberada.</strong>`;
+ const cards=focused.slice(0,1).map(r=>r[kind]);
  const first=cards[0];
- $('spray-scenario-cards').innerHTML=[['Passa triagem',first.passa,'#1e9c74'],['Marginal',first.marginal,'#d28b22'],['Restrita',first.restrito,'#c24f54']].map(([label,p,color])=>`<div class="screen-metric"><small>${esc(label)} • ${esc(dh(valid[0].time))}</small><strong style="color:${color}">${percent(p)}</strong><span>Frequência entre ${first.members} membros completos</span></div>`).join('');
- // Reduce the display density, not the numerical samples.
- const sample=valid.filter((r,i)=>i%3===0), x=sample.map(r=>dh(r.time));
- chart('spray-prob-plot',['passa','marginal','restrito'].map(cls=>({
-  type:'bar',x,y:sample.map(r=>(r[kind]?.[cls]??0)*100),name:cls==='passa'?'Passa filtro':cls==='marginal'?'Marginal':'Restrita',
+ if(!first){clearPlot('spray-prob-plot','Sem horários válidos neste dia.');clearPlot('spray-causes-plot','Sem horários válidos neste dia.');clearPlot('spray-2h-plot','Sem horários válidos neste dia.');$('spray-scenario-cards').innerHTML='';$('spray-best2h').innerHTML='';return;}
+ $('spray-scenario-cards').innerHTML=[['Passa filtros (NÃO é liberação)',first.passa,'#1e9c74'],['Marginal',first.marginal,'#d28b22'],['Restrita',first.restrito,'#c24f54'],['Indeterminada (noite/inversão)',first.indeterminado??0,'#8998ad']].map(([label,p,color])=>`<div class="screen-metric"><small>${esc(label)} • ${esc(dh(valid[0].time))}</small><strong style="color:${color}">${percent(p)}</strong><span>Frequência entre ${first.members} membros completos</span></div>`).join('');
+ // EVERY valid hour displayed: filter by date if the user wants readable 24h.
+ const sample=focused, x=sample.map(r=>dh(r.time));
+ chart('spray-prob-plot',['passa','marginal','restrito','indeterminado'].map(cls=>({
+  type:'bar',x,y:sample.map(r=>(r[kind]?.[cls]??0)*100),name:cls==='passa'?'Passa filtro':cls==='marginal'?'Marginal':cls==='restrito'?'Restrita':'Indeterminada',
   marker:{color:SPRAY_COLORS[cls]},hovertemplate:'%{y:.1f}% dos membros<extra></extra>'
  })),'Frequência conjunta (%)',{barmode:'stack',yaxis:{title:'Frequência (%)',range:[0,100],gridcolor:'#edf2f6'}});
  const keyColors={'vento':'#0a85ae','rajadas':'#d3872b','umidade':'#b75267','vpd':'#9a67b8','chuva_3h':'#4e8e63','temperatura':'#dd735d'};
@@ -288,19 +316,20 @@ function ensembleScreening(){
   line:{color:keyColors[reason],width:2.5},marker:{size:5},hovertemplate:'%{y:.1f}% dos membros<extra></extra>'
  })),'Frequência por motivo (%)',{yaxis:{title:'Frequência (%)',range:[0,100],gridcolor:'#edf2f6'}});
  const windows=(state?.spray_joint_windows_2h||[]).filter(r=>parseGridTime(r.start).getTime()>=now && r[kind]?.models>0).slice(0,72);
- const sampledWindows=windows.filter((r,i)=>i%2===0);
+ const sampledWindows=windows.filter(r=>activeDay==='all'||r.start.startsWith(activeDay));
  if(sampledWindows.length){chart('spray-2h-plot',[
   {type:'bar',x:sampledWindows.map(r=>dh(r.start)),y:sampledWindows.map(r=>r[kind].passa*100),name:'Ambas as horas passam',marker:{color:SPRAY_COLORS.passa}},
   {type:'bar',x:sampledWindows.map(r=>dh(r.start)),y:sampledWindows.map(r=>r[kind].marginal*100),name:'Pelo menos uma hora marginal',marker:{color:SPRAY_COLORS.marginal}},
-  {type:'bar',x:sampledWindows.map(r=>dh(r.start)),y:sampledWindows.map(r=>r[kind].restrito*100),name:'Pelo menos uma hora restrita',marker:{color:SPRAY_COLORS.restrito}}
+  {type:'bar',x:sampledWindows.map(r=>dh(r.start)),y:sampledWindows.map(r=>r[kind].restrito*100),name:'Pelo menos uma hora restrita',marker:{color:SPRAY_COLORS.restrito}},
+  {type:'bar',x:sampledWindows.map(r=>dh(r.start)),y:sampledWindows.map(r=>(r[kind].indeterminado??0)*100),name:'Indeterminada: inversão noturna',marker:{color:SPRAY_COLORS.indeterminado}}
  ],'Frequência nas 2h (%)',{barmode:'stack',yaxis:{title:'Frequência (%)',range:[0,100],gridcolor:'#edf2f6'}});
  }else {clearPlot('spray-2h-plot','Sem duas horas consecutivas com membros completos.');}
- const top=windows.filter(r=>r[kind].passa>0).sort((a,b)=>b[kind].passa-a[kind].passa || b[kind].models-a[kind].models || a.start.localeCompare(b.start)).slice(0,3);
+ const top=windows.filter(r=>r[kind].passa>0 && Number(r.start.slice(11,13))>=7 && Number(r.end.slice(11,13))<18).sort((a,b)=>b[kind].passa-a[kind].passa || b[kind].models-a[kind].models || a.start.localeCompare(b.start)).slice(0,3);
  $('spray-best2h').innerHTML=top.length?top.map((r,i)=>`<div class="window"><strong>${i+1}ª • ${esc(dh(r.start))}–${esc(hh(r.end))}</strong><b class="ok">${percent(r[kind].passa)} passam os filtros nas 2h</b><small>Marginal ${percent(r[kind].marginal)}, restrita ${percent(r[kind].restrito)}; ${r[kind].models} modelos, ${r[kind].members} membros. <strong>Exige verificação local.</strong></small></div>`).join(''):'<div class="notice muted">Nenhuma janela de 2 horas teve membros passando conjuntamente os filtros meteorológicos. A falta de dados não pode ser convertida em favorabilidade.</div>';
- const rows=valid.map(r=>{const o=r[kind];const major=Object.entries(o.reasons||{}).sort((a,b)=>b[1]-a[1]).slice(0,2).map(([k,p])=>SPRAY_REASONS[k]+' ('+percent(p)+')').join('; ');
-  return `<tr><td>${esc(dh(r.time))}</td><td>${o.models}</td><td>${o.members}</td><td class="ok">${percent(o.passa)}</td><td class="warn">${percent(o.marginal)}</td><td class="bad">${percent(o.restrito)}</td><td>${esc(major||'Sem restrições meteorológicas nos membros classificados; outras condições não verificadas')}</td></tr>`;
+ const rows=focused.map(r=>{const o=r[kind];const major=Object.entries(o.reasons||{}).sort((a,b)=>b[1]-a[1]).slice(0,2).map(([k,p])=>SPRAY_REASONS[k]+' ('+percent(p)+')').join('; ');
+  return `<tr><td>${esc(dh(r.time))}</td><td>${o.models}</td><td>${o.members}</td><td class="ok">${percent(o.passa)}</td><td class="warn">${percent(o.marginal)}</td><td class="bad">${percent(o.restrito)}</td><td class="na">${percent(o.indeterminado??0)}</td><td>${esc(major||'Sem restrições meteorológicas nos membros classificados; outras condições não verificadas')}</td></tr>`;
  });
- tableFill('spray-ensemble-table',['Hora','Modelos','Membros','Passa filtros','Marginal','Restrita','Motivos mais frequentes'],rows);
+ tableFill('spray-ensemble-table',['Hora','Modelos','Membros','Passa filtros','Marginal','Restrita','Indeterminada','Motivos mais frequentes'],rows);
 }
 
 function renderMachines(){const daily=dailyData();const items=(daily.time||[]).slice(0,14);if(!items.length){clearPlot('machine-rain','Dados diários indisponíveis para planejamento.');return;}
@@ -332,6 +361,20 @@ function renderOfficial(){
  tableFill('inmet-stations-table',['Estação','Código','Distância km','Situação','Altitude m'],
   stations.map(x=>`<tr><td>${esc(x.name)}</td><td>${esc(x.station_code)}</td><td>${fmt(x.distance_km)}</td><td>${esc(x.status)}</td><td>${esc(x.altitude_m)}</td></tr>`));
  if(!stations.length) $('inmet-stations-table').innerHTML='<tr><td>Catálogo INMET indisponível nesta consulta. Sem dados de estação não significa tempo estável.</td></tr>';
+ const obsHourly=official.inmet_hourly_nearby||{};
+ const hourlyStatus=$('inmet-hourly-status');
+ if(hourlyStatus){
+  if(obsHourly.state==='ok' && (obsHourly.records||[]).length){
+   const records=obsHourly.records.slice(-24).reverse();
+   hourlyStatus.className='notice';
+   hourlyStatus.textContent=`OBSERVADO • INMET/rede parceira: ${obsHourly.station_name} (${obsHourly.station_code}), ${fmt(obsHourly.distance_km,0)} km da sede, entidade ${obsHourly.entity||'não informada'}. São leituras reais reportadas pela estação, não previsão e não representam o talhão. Última leitura: ${records[0].valid_at_local}.`;
+   tableFill('inmet-hourly-table',['Hora local (UTC−4)','T °C','UR %','Chuva última hora mm','Vento médio km/h','Rajada km/h','Vento de onde (°)'],records.map(r=>`<tr><td>${esc(r.valid_at_local.slice(0,16).replace('T',' '))}</td>${cell(r.temperature_c)}${cell(r.rh_pct,'',0)}${cell(r.precipitation_previous_hour_mm)}${cell(r.wind_kmh)}${cell(r.gust_kmh)}${cell(r.wind_from_deg,'',0)}</tr>`));
+  }else{
+   hourlyStatus.className='notice warning';
+   hourlyStatus.innerHTML=`<strong>Leitura horária S735/INMET ainda não confirmada.</strong> ${esc(obsHourly.error||'Endpoint sem valores válidos nesta coleta')}. Não significa chuva ou vento zero. Consulte a <a target="_blank" rel="noopener" href="https://tempo.inmet.gov.br/TabelaEstacoes">tabela oficial do INMET</a> ou os <a target="_blank" rel="noopener" href="https://portal.inmet.gov.br/dadoshistoricos/">arquivos horários históricos gratuitos</a>.`;
+   if($('inmet-hourly-table'))$('inmet-hourly-table').innerHTML='';
+  }
+ }
  const stationObs=official.inmet_daily_nearby||{};
  const obsEl=$('inmet-daily');
  if(stationObs.state==='ok' && (stationObs.records||[]).length){
@@ -537,5 +580,6 @@ $('tabs').addEventListener('click',event=>{
 });
 $('refresh').addEventListener('click',()=>refresh(true));
 $('product').addEventListener('change',()=>{if(state){renderSpray(hoursFrom(state.deterministic?.hourly,72));ensembleScreening();}});
+$('spray-period').addEventListener('change',()=>{if(state){renderSpray(hoursFrom(state.deterministic?.hourly,72));ensembleScreening();}});
 window.addEventListener('resize',()=>{if(window.Plotly)for(const el of document.querySelectorAll('.tab.active .js-plotly-plot'))Plotly.Plots.resize(el);});
 refresh(false);setInterval(()=>refresh(true),30*60*1000);

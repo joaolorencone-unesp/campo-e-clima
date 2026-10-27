@@ -40,3 +40,8 @@
 .hist-controls{display:flex;align-items:end;flex-wrap:wrap;gap:10px;margin:16px 0}.hist-controls label{display:flex;flex-direction:column;gap:5px;font-weight:700;font-size:12px;color:#4c6677}.hist-controls select{min-width:185px;border:1px solid #cbdfea;background:#fff;padding:10px;border-radius:9px;color:#244b63}.hist-expanded>h3{margin:20px 0 8px}.hist-expanded .notice{margin:10px 0}.hist-expanded .grid2>div{min-width:0}.hist-expanded .plot{min-height:300px}.hist-expanded #hist-kpis .nasa-summary-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.hist-expanded #hist-compare-status{font-size:12px;line-height:1.55}.hist-expanded table{min-width:950px}
 @media(max-width:800px){.hist-expanded #hist-kpis .nasa-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.hist-expanded .plot{min-height:270px}}
 @media(max-width:500px){.hist-expanded #hist-kpis .nasa-summary-grid{grid-template-columns:1fr}.hist-controls select,.hist-controls button{width:100%}}
+
+/* v1.1 — hourly meteorological scenario classes (not calibrated probabilities) */
+.badgegray{display:inline-block;border-radius:6px;padding:3px 7px;font-size:12px;font-weight:750;margin:3px;background:#e9edf3;color:#586a84}
+.spray-filter{display:flex;align-items:center;flex-wrap:wrap;gap:12px;background:#edf7fb;border:1px solid #d2e5ed;border-radius:11px;padding:11px;margin-top:13px}.spray-filter label{font-size:13px;color:#25526c}.spray-filter select{max-width:260px}.spray-filter small{font-size:12px;color:#697b88}.gridsummary{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media(max-width:700px){.gridsummary{grid-template-columns:repeat(2,minmax(0,1fr))}.spray-filter{display:block}.spray-filter select{display:block;margin:8px 0;max-width:100%}}

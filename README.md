@@ -110,3 +110,12 @@ Foi acrescentada na aba **Histórico & indicadores** uma seção de histórico E
 Também há pré-triagem RETROSPECTIVA de horas diurnas usando até 31 dias de variáveis horárias completas (sem aprovação automática de pulverização) e consulta a um **catálogo INMET de estações próximas por coordenadas** gerado pelo workflow. Estações são metadados, não observações. Erros de API são explicitados e gráficos não recebem valores de exemplo na página pública.
 
 Leia a [documentação científica dos produtos históricos e a arquitetura](docs/OPEN_METEO_HISTORICO_V10.md). Os dados externos históricos por coordenadas precisam de validação na primeira visita ao site (o ambiente local de criação não conseguiu se conectar aos servidores da Open-Meteo); teste unitário offline não equivale a sucesso da coleta externa.
+
+
+## Atualização v1.1 — pulverização horária e estação S735
+
+A aba de pulverização apresenta gráficos da previsão **determinística por hora** (vento, rajadas, umidade e VPD) e gráficos **separados** das frequências conjuntas dos ensembles por hora e por janelas de 2h. Os cenários têm quatro classes: `passa filtros`, `marginal`, `restrito` e `indeterminado` (noturno sem verificação de inversão). **Nenhuma classe constitui aprovação operacional ou probabilidade calibrada de aplicação segura.** O filtro 07–17h não substitui avaliação de estabilidade/inversão nem observações no campo.
+
+Na aba Observações & fontes, o sistema tenta ler a estação [S735 — Naviraí (Faz. Santa Helena do Pindo)](https://apitempo.inmet.gov.br/estacoes/T), entidade SEMADESC-MS, a cerca de 37,6 km da sede. A consulta horária é **experimental** e pode não funcionar fora dos sistemas oficiais do INMET; os códigos distinguem `ok`, `no_data` e `unavailable` sem criar medições. [Documentação detalhada](docs/PULVERIZACAO_HORARIA_INMET_V11.md).
+
+Quando o usuário seleciona outra coordenada, o sistema não reutiliza a observação S735 nem o aviso de Naviraí como se fossem medições daquele talhão. Os próprios ensembles são atualizados para o ponto conforme disponibilidade.

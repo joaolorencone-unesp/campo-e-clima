@@ -29,3 +29,12 @@ def test_empty_charts_are_collapsed_instead_of_occupying_space():
     assert "$('climate-era5-card').hidden=!climateAvailable" in JS
     assert "$('previous-runs-card').hidden=!previousAvailable" in JS
     assert '.plot.is-empty' in (ROOT / 'site/static/styles.css').read_text(encoding='utf-8')
+
+
+def test_v11_hourly_spray_plots_and_station_observations():
+    from pathlib import Path
+    src=Path('site/index.html').read_text(encoding='utf8')
+    for key in ['spray-period','spray-hourly-wind','spray-hourly-atmos','inmet-hourly-status','inmet-hourly-table']:
+        assert f'id="{key}"' in src
+    script=Path('site/static/app.js').read_text(encoding='utf8')
+    assert 'indeterminado' in script and 'renderSprayWeather' in script
