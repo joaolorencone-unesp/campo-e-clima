@@ -33,6 +33,8 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Unit tests
         run: python -m pytest -q
+      - name: Front-end update smoke test (offline)
+        run: node tests/frontend_smoke.cjs
       # NASA POWER and ECMWF extended series update at most once per local day.
       # The cache is shared between scheduled runs, avoiding 48 identical daily requests.
       - name: Set local day for slow-source cache
@@ -41,18 +43,19 @@ jobs:
         uses: actions/cache@v4
         with:
           path: site/data/slow_sources_cache.json
-          key: slow-sources-v07-${{ env.SLOW_DAY }}
+          key: slow-sources-v08-${{ env.SLOW_DAY }}
       - name: Set climatology cache month
         run: echo "CLIMATE_MONTH=$(TZ=America/Campo_Grande date +%Y-%m)" >> "$GITHUB_ENV"
       - name: Restore/cache 1991–2020 climate baseline (monthly)
         uses: actions/cache@v4
         with:
           path: site/data/climate_cache.json
-          key: climate-era5-land-v07-${{ env.CLIMATE_MONTH }}
+          key: climate-era5-land-v08-${{ env.CLIMATE_MONTH }}
       - name: Collect forecasts
         env:
           NASA_POWER_ENABLE: '1'
-          ECMWF_EXTENDED_ENABLE: '1'
+          ECMWF_EXTENDED_ENABLE: '0' # Pausado por timeout frequente; sem dados sub-sazonais inventados.
+          CLIMATE_ERA5_ENABLE: '0' # Pausada até validar a completude dos 30 anos em grade.
           # Optional NEW secret, used exclusively by free /data/2.5/forecast API.
           OPENWEATHER_FREE_API_KEY: ${{ secrets.OPENWEATHER_FREE_API_KEY }}
         run: python scripts/collect.py

@@ -193,8 +193,8 @@ def parse_extended_ecmwf(payload:dict, *,day0:dt.date|None=None):
 
 
 def collect_extended(*,enabled=False):
-    if not enabled:return {'state':'requires_setup','source':'ECMWF EC46/SEAS5','source_url':URL_EXTENDED,
-       'note':'Conector implementado. Executar em tarefa diária com cache; desativado na coleta a cada 30min por custo de API e tamanho do produto.'}
+    if not enabled:return {'state':'disabled','source':'ECMWF EC46/SEAS5','source_url':URL_EXTENDED,
+       'note':'Consulta pausada na v0.8: timeouts recorrentes; não há tendência semanal validada. Foco nos dados Open-Meteo de curto prazo.'}
     try:
         data=get_json(URL_EXTENDED,{'latitude':LAT,'longitude':LON,'timezone':TZ,'forecast_days':60,
                    'models':'ecmwf_seasonal_seamless','hourly':'precipitation'},timeout=45)

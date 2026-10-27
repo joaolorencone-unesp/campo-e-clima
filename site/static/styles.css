@@ -16,3 +16,12 @@
 .official-alert-card strong{display:block;color:#69460d;font-size:16px}
 .official-alert-card p{margin:7px 0;color:#6c563a}
 .official-alert-card small{display:block;color:#876a47}
+
+/* v0.8 — responsive unavailable-state handling and useful manual refresh. */
+[hidden]{display:none!important}
+.plot.is-empty{min-height:0!important;height:auto!important;padding:12px 14px;border:1px dashed #d7e2ea;border-radius:10px;background:#f7fafc;color:#637d8e;font-size:13px;line-height:1.5;overflow:hidden}
+.history-evidence{margin:18px 0 28px}.history-evidence>h3{font-size:19px;margin:16px 0}.history-evidence .plot{min-height:0}.optional-source-card{min-width:0}
+.refresh-feedback{display:block;min-height:30px;max-width:360px;color:#456b7b;font-size:12px;line-height:1.4}
+.refresh-feedback.good{color:#137657}.refresh-feedback.info{color:#546f81}.refresh-feedback.error{color:#a2464b}
+#refresh{min-width:230px}
+@media(max-width:760px){.refresh-feedback{max-width:100%}.history-evidence>h3{font-size:17px}}

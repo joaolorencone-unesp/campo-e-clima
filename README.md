@@ -1,3 +1,5 @@
+> **v0.8 — atualização de interface (26/10/2026).** Veja [o que foi corrigido](docs/CHANGELOG_V08.md) e [como instalar](ATUALIZAR_GITHUB_v08.md). O botão consulta diretamente a previsão **determinística** atual da Open-Meteo; os ensembles continuam na coleta do GitHub Actions. Sem novas APIs pagas.
+
 # Campo & Clima 🌦️🌱 — versão 0.7 (somente fontes gratuitas)
 
 Painel agrometeorológico **experimental e aberto** para Naviraí–MS, com prioridade para **chuva, vento e rajadas, pulverização com drones e condições dos talhões**. Coordenadas de referência: **-23.065, -54.190**; fuso **America/Campo_Grande (UTC−4)**.

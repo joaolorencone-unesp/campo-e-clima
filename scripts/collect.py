@@ -402,7 +402,7 @@ def main():
             if old.get('cache_month')==climate_month: climate=old.get('data')
         except (ValueError,OSError):pass
     if climate is None:
-        climate=collect_climate_era5(enabled=True)
+        climate=collect_climate_era5(enabled=os.environ.get('CLIMATE_ERA5_ENABLE')=='1')
         climate_cache.parent.mkdir(parents=True,exist_ok=True)
         climate_cache.write_text(json.dumps({'cache_month':climate_month,'data':climate},ensure_ascii=False),encoding='utf-8')
     result['historical_comparison'] = compare_export_provisional(
