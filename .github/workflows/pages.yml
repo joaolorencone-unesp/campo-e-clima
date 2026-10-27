@@ -61,6 +61,8 @@ jobs:
         run: python scripts/collect.py
       # Temporary audit snapshots for future forecast verification; NOT permanent storage.
       # GitHub artifact retention is limited. Move to durable object storage later.
+      - name: Export free INMET station metadata for arbitrary farm coordinates
+        run: python scripts/export_inmet_catalog.py
       - name: Archive collected forecast snapshot (up to 90 days)
         uses: actions/upload-artifact@v4
         continue-on-error: true

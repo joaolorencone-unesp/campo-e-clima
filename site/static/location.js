@@ -45,6 +45,7 @@ function updateLocationUI(){
  $('nasa-point').textContent=`${format(loc.latitude,5)}°, ${format(loc.longitude,5)}°`;
  $('osmlink').href=`https://www.openstreetmap.org/?mlat=${loc.latitude}&mlon=${loc.longitude}#map=11/${loc.latitude}/${loc.longitude}`;
  document.querySelectorAll('.navirai-reference').forEach(x=>x.hidden=custom);
+ if(typeof window.dispatchEvent==='function' && typeof CustomEvent==='function')window.dispatchEvent(new CustomEvent('campo:location-changed',{detail:{...loc}}));
  const active=document.querySelector('.tab.active');if(active?.id==='observations'&&custom)document.querySelector('#tabs button[data-tab="overview"]').click();
 }
 async function getJSON(url,seconds=40){const ctrl=new AbortController();const timer=setTimeout(()=>ctrl.abort(),seconds*1000);try{const r=await fetch(url,{signal:ctrl.signal,cache:'no-store'});if(!r.ok)throw Error(`HTTP ${r.status}`);const value=await r.json();if(value?.error)throw Error(value.reason||'API retornou erro');return value;}finally{clearTimeout(timer);}}
@@ -210,7 +211,7 @@ async function refreshCustom(manual=true){
   setRefreshFeedback('✓ Previsão determinística nova para as coordenadas. Probabilidades: aguardando ensembles.','good');
   // Only refresh slow services on location change (or through their dedicated buttons).
   const key=`${loc.latitude.toFixed(5)},${loc.longitude.toFixed(5)}`;
-  if(ancillaryKey!==key){ancillaryKey=key;void getNASA(loc,token);void getArchive(loc,token);void getAirQuality(loc,token);void getElevation(loc,token);void getSoilForecast(loc,token);}
+  if(ancillaryKey!==key){ancillaryKey=key;void getNASA(loc,token);void getAirQuality(loc,token);void getElevation(loc,token);void getSoilForecast(loc,token);}
   // A large member request is wasteful every 30 min per visitor. The short-term
   // forecast refreshes every 30 min; ensembles are cached 3h (min 30m when manual).
   const maxAge=manual?30*60*1000:3*60*60*1000;
@@ -243,7 +244,7 @@ function parseNASA(data,point){
 function updateNASALink(point){
  const year=new Date().getUTCFullYear(),end=new Date(Date.now()-12*86400000).toISOString().slice(0,10).replaceAll('-','');
  const start=String(year-5)+'0101';
- const params={latitude:point.latitude,longitude:point.longitude,community:'AG',start,end,
+ const params={latitude:point.latitude,longitude:point.longitude,community:'AG',start,end,'time-standard':'UTC',
   parameters:'PRECTOTCORR,T2M,T2M_MAX,T2M_MIN,RH2M,WS2M,ALLSKY_SFC_SW_DWN',format:'JSON'};
  const url=pars(NASA,params);$('nasa-raw').href=url;return url;
 }
@@ -260,7 +261,8 @@ function renderNASA(data){
  const annual=[...perYear.entries()];$('nasa-summary').innerHTML=`<div class="nasa-summary-grid"><div><small>Dias com valores</small><strong>${data.record_count}</strong></div><div><small>Chuva no último mês completo</small><strong>${format(recent.slice().reverse().find(([k,v])=>monthComplete(k,v.days))?.[1].rain,0)} mm</strong></div><div><small>Fonte</small><strong>NASA POWER</strong></div></div><p class="caption">Série estimada em grade de resolução grosseira, não observação da estação. Meses com menos dias válidos do que os dias do calendário são ocultados dos gráficos para não subestimar os acumulados. Dias UTC da fonte podem diferir de dias locais.</p>`;
  const tableRows=annual.map(([year,v])=>`<tr><td>${esc(year)}</td><td>${format(v.days,0)}</td><td>${v.days===((Number(year)%4===0&&(Number(year)%100!==0||Number(year)%400===0))?366:365)?format(v.rain,1):'Parcial: '+format(v.rain,1)}</td></tr>`);
  tableFill('nasa-annual-table',['Ano','Dias com chuva estimada','Acumulado de chuva (mm)'],tableRows);
- setNasa(`✓ NASA POWER: ${data.record_count} dias de dados históricos em grade disponíveis para ${format(data.lat,4)}, ${format(data.lon,4)}.`, 'good');
+ setNasa(`✓ NASA POWER: ${data.record_count} dias de dados históricos em grade disponíveis para ${format(data.lat,4)}, ${format(data.lon,4)}. Série diária UTC.`, 'good');
+ if(typeof window.dispatchEvent==='function' && typeof CustomEvent==='function')window.dispatchEvent(new CustomEvent('campo:nasa-loaded',{detail:data}));
  redrawActive();
 }
 async function getNASA(point,token){
@@ -328,7 +330,7 @@ $('loc-share').addEventListener('click',async()=>{try{await navigator.clipboard.
 $('loc-navirai').addEventListener('click',reset);
 $('loc-diamantino').addEventListener('click',()=>select({latitude:-14.408,longitude:-56.446,name:'Diamantino–MT'}));
 $('nasa-refresh').addEventListener('click',()=>{const t=generation;void getNASA(loc,t);});
-$('tabs').addEventListener('click',event=>{if(event.target.closest('button[data-tab="history-nasa"]')){const t=generation;void getNASA(loc,t);void getArchive(loc,t);void getAirQuality(loc,t);}});
+$('tabs').addEventListener('click',event=>{if(event.target.closest('button[data-tab="history-nasa"]')){const t=generation;void getNASA(loc,t);void getAirQuality(loc,t);}});
 // Existing 30-min polling is handled by app.js. Custom points must never pull Naviraí snapshots.
 window.CampoLocation={isCustom:()=>loc.custom,refreshCustom,select,reset,getPoint:()=>({...loc}),_test:{parseNASA,computeModel,summarizeEnsembles,weightedQuantile,validate,readJoint,jointAssessment,mixJointEvent}};
 updateLocationUI();

@@ -19,13 +19,13 @@ def test_unique_identifiers_and_every_tab_exists():
     d=IDs();d.feed(html)
     assert len(d.ids)==len(set(d.ids)), 'duplicate IDs'
     assert all(k in d.ids for k in d.tabs)
-    for el in ('loc-form','loc-lat','loc-lon','loc-share','loc-reset','nasa-status','nasa-rain-plot','nasa-temperature-plot','nasa-annual-table','air-plot','archive-rain-plot','point-elevation','custom-source-note'):
+    for el in ('loc-form','loc-lat','loc-lon','loc-share','loc-reset','nasa-status','nasa-rain-plot','nasa-temperature-plot','nasa-annual-table','air-plot','hist-daily-plot','hist-compare-plot','hist-spray-plot','hist-station-table','point-elevation','custom-source-note'):
         assert el in d.ids
 
 
 def test_modules_loaded_in_order_and_no_leaked_credentials():
     html=(BASE/'site/index.html').read_text(encoding='utf-8')
-    assert html.index('static/app.js?v=9') < html.index('static/location.js?v=9')
+    assert html.index('static/app.js?v=10') < html.index('static/location.js?v=10') < html.index('static/history_v10.js?v=10')
     contents='\n'.join(p.read_text(encoding='utf-8') for p in (BASE/'site/static/location.js', BASE/'site/static/app.js',BASE/'site/index.html'))
     assert 'OPENWEATHER_API_KEY=' not in contents
     assert re.search(r'AIzaSy[A-Za-z0-9_-]{30}',contents) is None

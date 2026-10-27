@@ -102,3 +102,11 @@ As chamadas programadas utilizam **somente serviços gratuitos**, sem One Call o
 ### OpenWeather gratuito (opcional, não obrigatório)
 
 A API oficial [5-day / 3-hour forecast](https://openweathermap.org/api/forecast5) pertence ao plano Free. **Não use a chave antiga exposta no chat**; primeiro revogue-a e gere outra de plano Free. Salve-a SOMENTE em GitHub → Settings → Secrets and variables → Actions → New repository secret, com o nome exato **`OPENWEATHER_FREE_API_KEY`**. O código usa apenas `https://api.openweathermap.org/data/2.5/forecast`, não a One Call 3/4. Sem novo segredo a integração aparece como opcional e **não há chamada externa**. Mesmo com integração, a previsão externa é apenas comparação textual, não membro extra dos oito ensembles.
+
+## 🌦️ v1.0 — Histórico diário + fontes gratuitas por coordenada (27/10/2026)
+
+Foi acrescentada na aba **Histórico & indicadores** uma seção de histórico ERA5-Land com filtros de 30/90/365 dias, chuva diária, T mínima/máxima/média, ET₀, rajadas e exportação CSV, mais gráficos de comparação NASA POWER × ERA5-Land com ambas as séries no dia UTC. Na NASA POWER a API passa explicitamente `time-standard=UTC` para evitar comparar tempo solar local com UTC sem aviso.
+
+Também há pré-triagem RETROSPECTIVA de horas diurnas usando até 31 dias de variáveis horárias completas (sem aprovação automática de pulverização) e consulta a um **catálogo INMET de estações próximas por coordenadas** gerado pelo workflow. Estações são metadados, não observações. Erros de API são explicitados e gráficos não recebem valores de exemplo na página pública.
+
+Leia a [documentação científica dos produtos históricos e a arquitetura](docs/OPEN_METEO_HISTORICO_V10.md). Os dados externos históricos por coordenadas precisam de validação na primeira visita ao site (o ambiente local de criação não conseguiu se conectar aos servidores da Open-Meteo); teste unitário offline não equivale a sucesso da coleta externa.
