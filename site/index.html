@@ -1,7 +1,7 @@
 <!doctype html>
-<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f4f8fb"><meta name="description" content="Campo e Clima: previsão meteorológica e histórico NASA POWER por coordenadas geográficas, para o agro."><title>Campo e Clima • Qualquer coordenada</title><link rel="stylesheet" href="static/styles.css?v=19"><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f4f8fb"><meta name="description" content="Campo e Clima: previsão meteorológica e histórico NASA POWER por coordenadas geográficas, para o agro."><title>Campo e Clima • Qualquer coordenada</title><link rel="stylesheet" href="static/styles.css?v=20"><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script defer src="static/plotly.min.js"></script><script defer src="static/alerts_v19.js?v=19"></script><script defer src="static/history_auto_v19.js?v=19"></script><script defer src="static/rain_scenarios.js?v=16"></script><script defer src="static/app.js?v=19"></script><script defer src="static/location.js?v=18"></script><script defer src="static/history_v10.js?v=13"></script><script defer src="static/extended_v12.js?v=19"></script><script defer src="static/maps_v14.js?v=19"></script></head>
+<script defer src="static/plotly.min.js"></script><script defer src="static/alerts_v19.js?v=19"></script><script defer src="static/history_auto_v19.js?v=19"></script><script defer src="static/rain_scenarios.js?v=16"></script><script defer src="static/app.js?v=19"></script><script defer src="static/location.js?v=18"></script><script defer src="static/history_v10.js?v=13"></script><script defer src="static/extended_v12.js?v=19"></script><script defer src="static/maps_v14.js?v=20"></script></head>
 <body>
 <header class="masthead"><div class="wrap masthead-inner"><div><span class="eyebrow">AGROMETEOROLOGIA EXPERIMENTAL <span class="live-dot">●</span> COORDENADAS PERSONALIZÁVEIS</span><h1>Campo <span>&</span> Clima</h1><p>Previsão multimodelo, cenários de chuva e planejamento de operações agrícolas</p><div class="coord">23,065° S · 54,190° O · Horário local UTC−4</div></div><div class="head-controls"><button id="refresh" class="primary">↻ Atualizar previsão agora</button><span id="last-updated" class="last-updated">Aguardando primeira leitura…</span><span id="refresh-feedback" class="refresh-feedback" aria-live="polite">Ainda não foi solicitada atualização manual.</span><small>Para Naviraí, o botão consulta a previsão atual. Para outras coordenadas, consulta também ensembles diretamente no navegador. NASA POWER é histórico, não previsão.</small></div></div></header>
 <main class="wrap">
@@ -60,6 +60,11 @@
     <option value="cloud_cover_mid">Nuvens médias (%)</option>
     <option value="cloud_cover_high">Nuvens altas (%)</option>
     <option value="precipitation">🌧 Precipitação (mm/h)</option>
+    <option value="precipitation_probability">🌦 Probabilidade do modelo (%)</option>
+    <option value="temperature_2m">🌡 Temperatura a 2 m (°C)</option>
+    <option value="relative_humidity_2m">💧 Umidade relativa (%)</option>
+    <option value="wind_gusts_10m">💨 Rajadas a 10 m (km/h)</option>
+    <option value="cape">⛈ CAPE (J/kg)</option>
     <option value="wind_speed_10m">🌬 Vento médio (km/h + seta)</option>
    </select></label>
    <label>Imagem de satélite<select id="map-satellite">
@@ -72,14 +77,20 @@
   </div>
   <div class="radar-control" aria-label="Animação de radar observado">
    <label><strong>🌧 Radar observado</strong><select id="radar-mode"><option value="off">Desligado · mostrar previsão</option><option value="rainviewer">Animar radar • últimas 2 horas (RainViewer)</option></select></label>
-   <button id="radar-play" type="button" class="pill" disabled>▶ Animar radar</button>
+   <button id="radar-prev" type="button" class="pill" disabled title="Quadro anterior">◀ Anterior</button>
+   <button id="radar-play" type="button" class="pill" disabled>▶ Reproduzir radar</button>
+   <button id="radar-next" type="button" class="pill" disabled title="Próximo quadro">Próximo ▶</button>
+   <label>Intervalo<select id="radar-speed" aria-label="Duração de cada quadro"><option value="1800">1,8 s</option><option value="2800" selected>2,8 s</option><option value="4200">4,2 s</option></select></label>
    <button id="radar-refresh" type="button" class="pill">↻ Atualizar quadros</button>
    <input id="radar-frame" type="range" min="0" max="0" value="0" disabled aria-label="Quadro do radar observado">
-   <strong id="radar-frame-time">Sem quadros carregados</strong>
+   <strong id="radar-frame-time" aria-live="polite">Sem quadros carregados</strong>
+   <small id="radar-loading" role="status" aria-live="polite"></small>
   </div>
   <p id="radar-status" class="notice muted">O radar é uma <strong>observação do passado</strong>, não uma previsão futura. A cobertura regional depende das estações disponíveis; ausência de ecos não prova ausência de chuva.</p>
   <p class="caption">Animações oficiais complementares: <a href="https://satelite.inmet.gov.br/" target="_blank" rel="noopener">INMET • satélite (infravermelho / nuvens) ↗</a> · <a href="https://portal.inmet.gov.br/produtos/radar" target="_blank" rel="noopener">INMET/DECEA • radar ↗</a> · <a href="https://www.cptec.inpe.br/dsat/" target="_blank" rel="noopener">INPE • GOES ↗</a>. Os serviços externos podem restringir reprodução das imagens.</p>
+  <div class="map-source-banner"><strong id="map-product-source">🟢 PREVISÃO FUTURA • Open-Meteo</strong><span>Camadas com fontes e horários diferentes nunca são misturadas silenciosamente.</span></div>
   <div id="weather-map" class="weather-map" role="region" aria-label="Mapa meteorológico interativo por coordenadas"><div class="map-loading">Abra esta aba para carregar o mapa interativo.</div></div>
+  <div id="map-product-legend" class="map-product-legend" aria-live="polite">Legenda por fonte e unidade.</div>
   <p id="map-status" class="notice muted" aria-live="polite">O mapa carregará somente quando esta aba for aberta, para economizar consultas gratuitas.</p>
   <div class="map-timebar"><button id="map-previous" class="pill" type="button" aria-label="Hora anterior">◀</button>
    <input id="map-hour" type="range" min="0" max="47" value="0" aria-label="Hora do mapa previsto" disabled>
@@ -88,7 +99,7 @@
    <strong id="map-time-label">Previsão ainda não consultada</strong></div>
   <div class="map-foot"><span id="map-legend">Legenda ao carregar a previsão.</span>
    <button id="map-refresh" class="pill" type="button">↻ Consultar campos previstos</button></div>
-  <p class="caption">A camada prevista amostra uma <strong>grade de 3 × 3 pontos</strong> (~0,4° entre pontos), representada por pontos circulares de amostragem, não mapa de alta resolução ou acompanhamento real das nuvens. A imagem MODIS/VIIRS é <strong>observação de passagem orbital</strong>: pode ter atraso, lacunas e não representa radar em tempo real. A imagem exibida não comprova que o satélite passou exatamente sobre o talhão no horário solicitado. Modelos horários podem conter interpolação temporal.</p>
+  <p class="caption">O mapa oferece <strong>radar passado</strong>, <strong>satélite orbital</strong> e <strong>campos previstos para as próximas 48 horas</strong>. A camada prevista amostra uma <strong>grade de 3 × 3 pontos</strong> (~0,4° entre pontos), representada por pontos circulares de amostragem, não mapa de alta resolução ou acompanhamento real das nuvens. A imagem MODIS/VIIRS é <strong>observação de passagem orbital</strong>: pode ter atraso, lacunas e não representa radar em tempo real. A imagem exibida não comprova que o satélite passou exatamente sobre o talhão no horário solicitado. Modelos horários podem conter interpolação temporal.</p>
  </article>
  <article class="panel"><h3>🌬 Para onde o vento previsto pode transportar gotas?</h3>
   <p id="map-wind-summary" class="notice muted">Selecione uma hora do mapa e a camada de vento. A direção meteorológica informa de onde sopra; o transporte potencial ocorre na direção oposta.</p>

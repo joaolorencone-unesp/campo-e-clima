@@ -97,3 +97,15 @@
 .radar-control input[type=range]{flex:1 1 130px;min-width:95px;accent-color:#097ead}.radar-control strong{font-size:12px}
 #history-auto-panel{margin-top:17px}#history-auto-panel table{min-width:570px}#history-auto-status{line-height:1.65}
 @media(max-width:780px){.inmet-group-top{flex-direction:column}.radar-control label{width:100%}.radar-control select{width:100%;max-width:none}}
+
+/* Campo e Clima v2.0 — verifiable map timelines and quantitative legends */
+.map-source-banner{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#eaf4fa;border:1px solid #d1e4ee;border-radius:11px;padding:11px 14px;margin:10px 0;color:#24516d;font-size:12px}
+.map-source-banner strong{font-size:13px;color:#145d80}.map-source-banner span{color:#5d7b8c}
+.map-product-legend{padding:12px 15px;margin:10px 0;background:#f6fafd;border:1px solid #dbeaf2;border-radius:11px;color:#284d64;line-height:1.5}
+.map-product-legend>strong{font-size:13px}.map-product-legend small{display:block;font-size:11px;color:#5d7787;margin-top:9px}
+.map-scale-row{display:flex;align-items:flex-start;gap:9px;flex-wrap:wrap;margin:10px 0 4px}.map-scale-item{display:inline-flex;flex-direction:column;align-items:center;gap:4px;font-size:11px;font-weight:600;min-width:50px}
+.map-scale-item i{display:block;width:53px;height:16px;border-radius:5px;border:1px solid #ccdce8;box-shadow:inset 0 1px 2px #0002}
+#radar-loading{color:#4c7892;font-size:12px;min-width:105px}
+.radar-control label:has(#radar-speed){gap:5px}.radar-control label #radar-speed{min-width:74px;width:74px;padding:8px 5px}
+#radar-frame-time{flex-basis:100%;line-height:1.6}
+@media(max-width:660px){.radar-control{gap:8px}.radar-control button{flex:1 0 auto}.map-scale-item{min-width:41px}.map-scale-item i{width:43px}.map-source-banner{align-items:flex-start;flex-direction:column}}
