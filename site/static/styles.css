@@ -80,3 +80,9 @@
 .compass-labels{display:flex;flex-direction:column;gap:7px;min-width:220px}.compass-labels>strong{font-size:25px;color:#1e5678}.compass-labels small{font-size:12px;font-weight:500;color:#748d9e}.compass-labels .from-wind{color:#2076a5}.compass-labels .to-wind{color:#b35b2d}
 @media(max-width:760px){.weather-map{height:410px}.map-toolbar label{flex-basis:43%}.map-timebar #map-hour{flex-basis:100%;order:5}.wind-compass-content{gap:7px;justify-content:center}.compass-labels{min-width:0}.wind-compass-panel .panel-head label{width:100%}}
 @media(max-width:480px){.map-toolbar label{flex-basis:100%}.map-timebar strong{width:100%}.weather-map{height:360px}}
+
+/* v1.6 — comparison of trace precipitation and measurable rainfall. */
+#rain-trace-insight{border-left:4px solid #2cabc0;font-size:13px;line-height:1.55;background:#eaf6f9;color:#28667b}
+.inline-label{display:inline-flex;align-items:center;gap:8px;color:#456779;font-size:13px;font-weight:650;white-space:nowrap}
+#rain-agreement-day{padding:7px 11px;min-width:105px;font-size:13px}
+@media(max-width:600px){#rain-agreement-panel .panel-head{align-items:flex-start;flex-direction:column}#rain-agreement-day{min-width:140px}}

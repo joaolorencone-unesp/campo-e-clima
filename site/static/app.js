@@ -157,11 +157,19 @@ function renderRain(idx){
  const rain=state?.rain_ensemble_daily||[];
  // Do not show a wall of empty cards when custom-location ensemble samples fail.
  // Keep Forecast API graphs visible, but no fake multimodel percentages.
- for(const id of ['rain-window-table','rain-models-plot','rain-table']){
+ for(const id of ['rain-window-table','rain-models-plot','rain-table','rain-bands-plot','rain-model-agreement']){
   const panel=$(id)?.closest('article.panel');
   if(panel)panel.hidden=Boolean(state?.site?.custom && !rain.length);
  }
  const x=rain.map(z=>ddmm(z.date));
+ const insight=$('rain-trace-insight');
+ if(insight){
+   const focus=rain.find(z=>z.date>=dateLocal()&&window.CampoRain?.bands(z))||rain.find(z=>window.CampoRain?.bands(z));
+   const b=focus?window.CampoRain.bands(focus):null;
+   insight.textContent=b
+     ? `${ddmm(focus.date)} • ${focus.model_count} modelos / ${focus.member_count} membros: >0,1 mm ${percent(focus.p_gt_0_1_mm)}; >1 mm ${percent(focus.p_gt_1_mm)}; só 0,1–1 mm ${percent(b.veryLight)}; praticamente seco ${percent(b.almostDry)}. Frequências não calibradas.`
+     : 'Sem amostras multimodelo completas para comparar >0,1 mm e >1 mm nesta coleta. A previsão determinística não substitui essas frequências.';
+ }
  if(rain.length){
    chart('rain-plot',[
      {x,y:rain.map(z=>z.p10_mm),type:'scatter',mode:'lines',name:'P10 • cenário seco',line:{color:'#aecfe3',width:1},hovertemplate:'P10 %{y:.1f} mm<extra></extra>'},
@@ -169,8 +177,13 @@ function renderRain(idx){
      {x,y:rain.map(z=>z.p50_mm),type:'scatter',mode:'lines+markers',name:'Mediana P50',line:{color:'#176eaa',width:3},marker:{size:8},hovertemplate:'P50 %{y:.1f} mm<extra></extra>'},
      {x,y:rain.map(z=>z.mean_mm),type:'scatter',mode:'lines+markers',name:'Média',line:{color:'#e49a45',width:2,dash:'dot'},hovertemplate:'Média %{y:.1f} mm<extra></extra>'}
    ],'Chuva (mm/dia)');
-   const thresholds=[[1,'#66bbcc'],[5,'#448dc6'],[10,'#e4a354'],[20,'#ba526b']];
-   chart('rain-risk-plot',thresholds.map(([n,c])=>({x,y:rain.map(z=>z['p_gt_'+n+'_mm']*100),type:'scatter',mode:'lines+markers',name:'>'+n+' mm/dia',line:{color:c,width:2.5},marker:{size:7},hovertemplate:'%{y:.0f}%<extra></extra>'})),'Frequência (%)',{yaxis:{range:[0,100],title:'Frequência (%)',gridcolor:'#edf2f6'}});
+   const thresholds=[['0_1','#1fa5aa','0,1'],[1,'#448dc6','1'],[5,'#4e987c','5'],[10,'#e4a354','10'],[20,'#ba526b','20']];
+   chart('rain-risk-plot',thresholds.map(([n,c,label])=>({x,y:rain.map(z=>num(z['p_gt_'+n+'_mm'])===null?null:z['p_gt_'+n+'_mm']*100),type:'scatter',mode:'lines+markers',name:'>'+label+' mm/dia',line:{color:c,width:2.5},marker:{size:7},hovertemplate:'%{y:.0f}%<extra></extra>'})),'Frequência (%)',{yaxis:{range:[0,100],title:'Frequência (%)',gridcolor:'#edf2f6'}});
+   const bandRows=rain.map(row=>window.CampoRain?.bands(row)??null);
+   if(bandRows.some(Boolean)){
+     const specs=[['almostDry','≤0,1 mm • praticamente seco','#a9b7c6'],['veryLight','>0,1 a 1 mm • muito fraca','#72c4d2'],['light','>1 a 5 mm • fraca','#3c91c8'],['higher','>5 mm • maior acumulado','#225f8f']];
+     chart('rain-bands-plot',specs.map(([key,name,color])=>({x,y:bandRows.map(b=>b?b[key]*100:null),type:'bar',name,marker:{color},hovertemplate:'%{y:.1f}%<extra></extra>'})),'Frequência dos membros (%)',{barmode:'stack',yaxis:{title:'Frequência (%)',range:[0,100],gridcolor:'#edf2f6'}});
+   }else clearPlot('rain-bands-plot','Sem frequências válidas para separar os tipos de chuva.');
  }else if(state?.site?.custom){
   // Transparent fallback: Forecast API values are NOT multimodel ensemble frequencies.
   const d=dailyData(),dates=(d.time||[]).slice(0,7).map(ddmm),rainfall=(d.precipitation_sum||[]).slice(0,7),chance=(d.precipitation_probability_max||[]).slice(0,7);
@@ -182,15 +195,16 @@ function renderRain(idx){
    {x:dates,y:chance,type:'bar',name:'Maior chance horária no dia • Forecast API',marker:{color:'#e6a45d'},hovertemplate:'%{y:.0f}% • máximo horário do dia (não chance diária)<extra></extra>'}
   ],'Maior probabilidade horária no dia (%)',{yaxis:{range:[0,100],title:'Maior chance horária (%)',gridcolor:'#edf2f6'}});
   else clearPlot('rain-risk-plot','Sem probabilidade horária de precipitação disponível na previsão determinística.');
- }else{['rain-plot','rain-risk-plot'].forEach(id=>clearPlot(id,'Sem distribuição validada de chuva nesta coleta.'));}
- const titles=['Dia','Modelos','Membros','Média mm','P10','P50','P90','>1 mm','>5 mm','>10 mm','>20 mm'];
- tableFill('rain-table',titles,rain.map(z=>`<tr><td>${esc(ddmm(z.date))}</td><td>${z.model_count}</td><td>${z.member_count}</td>${cell(z.mean_mm)}${cell(z.p10_mm)}${cell(z.p50_mm)}${cell(z.p90_mm)}<td>${percent(z.p_gt_1_mm)}</td><td>${percent(z.p_gt_5_mm)}</td><td>${percent(z.p_gt_10_mm)}</td><td>${percent(z.p_gt_20_mm)}</td></tr>`));
+ }else{['rain-plot','rain-risk-plot','rain-bands-plot'].forEach(id=>clearPlot(id,'Sem distribuição validada de chuva nesta coleta.'));}
+ const titles=['Dia','Modelos','Membros','Média mm','P10','P50','P90','≤0,1 mm','>0,1 mm','0,1–1 mm','>1 mm','>5 mm','>10 mm','>20 mm'];
+ tableFill('rain-table',titles,rain.map(z=>`<tr><td>${esc(ddmm(z.date))}</td><td>${z.model_count}</td><td>${z.member_count}</td>${cell(z.mean_mm)}${cell(z.p10_mm)}${cell(z.p50_mm)}${cell(z.p90_mm)}<td>${percent(num(z.p_gt_0_1_mm)===null?null:1-z.p_gt_0_1_mm)}</td><td>${percent(z.p_gt_0_1_mm)}</td><td>${percent(window.CampoRain?.bands(z)?.veryLight??null)}</td><td>${percent(z.p_gt_1_mm)}</td><td>${percent(z.p_gt_5_mm)}</td><td>${percent(z.p_gt_10_mm)}</td><td>${percent(z.p_gt_20_mm)}</td></tr>`));
  const hr=state?.rain_ensemble_hourly||[];
  const forward=hr.filter(z=>parseGridTime(z.time).getTime()>=Date.now()-3600000).slice(0,72);
  if(forward.length){const rx=forward.map(z=>dh(z.time));
    chart('rain-hour-prob',[
      {x:rx,y:forward.map(z=>z.windows?.['1']?.mean_mm??null),type:'bar',name:'Média mm/h',marker:{color:'#76b7df'},hovertemplate:'%{y:.2f} mm/h<extra></extra>'},
-     {x:rx,y:forward.map(z=>num(z.windows?.['1']?.p_gt_1_mm)!=null?z.windows['1'].p_gt_1_mm*100:null),type:'scatter',mode:'lines',name:'Freq. >1 mm/h',yaxis:'y2',line:{color:'#c85f51',width:2.4},hovertemplate:'%{y:.0f}%<extra></extra>'}
+     {x:rx,y:forward.map(z=>num(z.windows?.['1']?.p_gt_0_1_mm)!=null?z.windows['1'].p_gt_0_1_mm*100:null),type:'scatter',mode:'lines',name:'Freq. >0,1 mm/h',yaxis:'y2',line:{color:'#12a9bd',width:2.4},hovertemplate:'>0,1 mm/h: %{y:.1f}%<extra></extra>'},
+     {x:rx,y:forward.map(z=>num(z.windows?.['1']?.p_gt_1_mm)!=null?z.windows['1'].p_gt_1_mm*100:null),type:'scatter',mode:'lines',name:'Freq. >1 mm/h',yaxis:'y2',line:{color:'#c85f51',width:2.4},hovertemplate:'>1 mm/h: %{y:.1f}%<extra></extra>'}
    ],'Chuva (mm/h)',{yaxis2:{title:'Frequência (%)',overlaying:'y',side:'right',range:[0,100],showgrid:false}});
  }else if(state?.site?.custom){
   const h=state?.deterministic?.hourly||{};
@@ -204,14 +218,29 @@ function renderRain(idx){
  // Show timestamps at 3-hour intervals to avoid double-counting overlapping windows in a table.
  for(const o of forward){if(Number(o.time.slice(11,13))%3!==0)continue;
   const a=o.windows?.['3'],b=o.windows?.['6'];if(!a&&!b)continue;
-  windows.push(`<tr><td>${esc(dh(o.time))}</td>${cell(a?.mean_mm)}<td>${percent(a?.p_gt_1_mm)}</td><td>${percent(a?.p_gt_5_mm)}</td><td>${percent(a?.p_gt_10_mm)}</td>${cell(b?.mean_mm)}<td>${percent(b?.p_gt_5_mm)}</td><td>${percent(b?.p_gt_10_mm)}</td><td class="na">${a?.models??b?.models??'—'}</td></tr>`);
+  windows.push(`<tr><td>${esc(dh(o.time))}</td>${cell(a?.mean_mm)}<td>${percent(a?.p_gt_0_1_mm)}</td><td>${percent(a?.p_gt_1_mm)}</td><td>${percent(a?.p_gt_5_mm)}</td><td>${percent(a?.p_gt_10_mm)}</td>${cell(b?.mean_mm)}<td>${percent(b?.p_gt_0_1_mm)}</td><td>${percent(b?.p_gt_1_mm)}</td><td>${percent(b?.p_gt_5_mm)}</td><td>${percent(b?.p_gt_10_mm)}</td><td class="na">${a?.models??b?.models??'—'}</td></tr>`);
  }
- tableFill('rain-window-table',['Início local','Média 3h mm','Freq. 3h >1','Freq. 3h >5','Freq. 3h >10','Média 6h mm','Freq. 6h >5','Freq. 6h >10','Modelos'],windows,'Agregação horária conjunta ainda não disponível para esta coleta.');
+ tableFill('rain-window-table',['Início local','Média 3h mm','Freq. 3h >0,1','Freq. 3h >1','Freq. 3h >5','Freq. 3h >10','Média 6h mm','Freq. 6h >0,1','Freq. 6h >1','Freq. 6h >5','Freq. 6h >10','Modelos'],windows,'Agregação horária conjunta ainda não disponível para esta coleta.');
  const mrows=state?.rain_models_daily||[];
  if(mrows.length){const names=[...new Set(mrows.map(z=>z.model))],dates=[...new Set(mrows.map(z=>z.date))].sort();const map=new Map(mrows.map(z=>[z.model+'|'+z.date,z.mean_mm]));
+   const select=$('rain-agreement-day');
+   if(select){
+     const oldDay=select.value, choices=dates.map(date=>`<option value="${esc(date)}">${esc(ddmm(date))}</option>`).join('');
+     if(select.innerHTML!==choices)select.innerHTML=choices;
+     select.value=dates.includes(oldDay)?oldDay:(dates.find(date=>date>=dateLocal())||dates[0]);
+     const agreement=window.CampoRain?.modelAgreement(mrows,select.value)||[];
+     if(agreement.length){
+       const labels=agreement.map(v=>v.model);
+       chart('rain-model-agreement',[
+         {x:labels,y:agreement.map(v=>v.p01*100),type:'bar',name:'>0,1 mm/dia',marker:{color:'#21aab7'},hovertemplate:'%{x}<br>>0,1 mm: %{y:.1f}%<extra></extra>'},
+         {x:labels,y:agreement.map(v=>v.p1*100),type:'bar',name:'>1 mm/dia',marker:{color:'#226ca7'},hovertemplate:'%{x}<br>>1 mm: %{y:.1f}%<extra></extra>'}
+       ],'Frequência dos membros (%)',{barmode:'group',height:390,margin:{t:20,b:125,l:60,r:30},xaxis:{type:'category',tickangle:-28,automargin:true},yaxis:{range:[0,100],title:'Frequência (%)'}});
+     }else clearPlot('rain-model-agreement','Comparação ainda indisponível: coleta por modelo sem ambos os limiares >0,1 e >1 mm. Atualize o conjunto.');
+   }
+
    chart('rain-models-plot',[{type:'heatmap',x:dates.map(ddmm),y:names,z:names.map(name=>dates.map(date=>map.get(name+'|'+date)??null)),colorscale:[[0,'#f1f8fc'],[.2,'#aed9ef'],[.5,'#4b98ca'],[1,'#115b8f']],colorbar:{title:'mm/dia',len:.84},hovertemplate:'%{y}<br>%{x}<br>Média %{z:.1f} mm<extra></extra>'}],'',{
       height:Math.max(390,names.length*34+120),margin:{l:155,r:50,t:30,b:78},hovermode:'closest',yaxis:{autorange:'reversed',showgrid:false,automargin:true}});
- }else{$('rain-models-plot').textContent='Sem dados individuais por modelo nesta versão da coleta. A atualização do coletor permitirá esta comparação.';}
+ }else{clearPlot('rain-models-plot','Sem dados individuais válidos por modelo nesta versão da coleta.');clearPlot('rain-model-agreement','Sem dados individuais por ensemble para este ponto.');}
  const d=dailyData();tableFill('daily-table',['Data','T mín °C','T máx °C','Chuva mm','Chance máx. %*','Rajada máx km/h'],(d.time||[]).map((date,i)=>`<tr><td>${esc(ddmm(date))}</td>${cell(val(d,'temperature_2m_min',i))}${cell(val(d,'temperature_2m_max',i))}${cell(val(d,'precipitation_sum',i))}${cell(val(d,'precipitation_probability_max',i),'',0)}${cell(val(d,'wind_gusts_10m_max',i))}</tr>`));
 }
 function renderWind(idx){
@@ -645,6 +674,7 @@ $('tabs').addEventListener('click',event=>{
  requestAnimationFrame(()=>requestAnimationFrame(redrawActive));
 });
 $('refresh').addEventListener('click',()=>refresh(true));
+$('rain-agreement-day')?.addEventListener('change',()=>{if(state)renderRain(hoursFrom(state.deterministic?.hourly,72));});
 $('product').addEventListener('change',()=>{if(state){renderSpray(hoursFrom(state.deterministic?.hourly,72));ensembleScreening();}});
 $('spray-inspect-hour')?.addEventListener('change',()=>{const r=(state?.spray_joint_hourly||[]).find(x=>x.time===$('spray-inspect-hour').value),kind=$('product').value;if(r&&r[kind])$('spray-reason-detail').innerHTML=`<strong>Diagnóstico dos membros • ${esc(dh(r.time))}</strong>`+sprayRestrictionExplanation(r,kind);});
 $('spray-period').addEventListener('change',()=>{if(state){renderSpray(hoursFrom(state.deterministic?.hourly,72));ensembleScreening();}});

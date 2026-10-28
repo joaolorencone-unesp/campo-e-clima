@@ -279,6 +279,8 @@ def rain_models_comparison(by_model: dict[str,dict]) -> list[dict]:
                 continue
             result.append({'model':name,'date':day,'members':len(members),
                            'mean_mm':round(sum(members)/len(members),3),
+                           'p_gt_0_1_mm':round(sum(x>0.1 for x in members)/len(members),4),
+                           'p_gt_1_mm':round(sum(x>1 for x in members)/len(members),4),
                            'p_gt_5_mm':round(sum(x>5 for x in members)/len(members),4)})
     return result
 

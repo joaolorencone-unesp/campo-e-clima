@@ -35,6 +35,8 @@ jobs:
         run: python -m pytest -q
       - name: Front-end update smoke test (offline)
         run: node tests/frontend_smoke.cjs
+      - name: Rain trace and dry-scenario regression (offline)
+        run: node tests/test_rain_scenarios_v16.cjs
       # NASA POWER and ECMWF extended series update at most once per local day.
       # The cache is shared between scheduled runs, avoiding 48 identical daily requests.
       - name: Set local day for slow-source cache

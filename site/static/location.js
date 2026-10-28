@@ -163,7 +163,7 @@ function summarizeEnsembles(results){
   if(results[name].spray?.times&&Object.keys(results[name].spray.times).length){sprayModels[name]=results[name].spray;sprayStatuses[name]={status:'ok',member_fields_complete:results[name].spray.members_available};}
   else sprayStatuses[name]={status:'indisponivel',detail:results[name].sprayError||'sem variáveis conjuntas completas'};
   models[name]={state:Object.keys(c.r).length?'ok':'no_valid_daily_rain_members',precipitation_members:c.member_rain,gust_members:Object.values(c.g).some(a=>a.length)?c.member_gust:0,grid_lat:payload.latitude,grid_lon:payload.longitude,code:MODELS[name]};
-  for(const [day,values] of Object.entries(c.r))if(values.length)comparison.push({model:name,date:day,members:values.length,mean_mm:values.reduce((a,b)=>a+b,0)/values.length,p_gt_5_mm:values.filter(v=>v>5).length/values.length});
+  for(const [day,values] of Object.entries(c.r))if(values.length)comparison.push({model:name,date:day,members:values.length,mean_mm:values.reduce((a,b)=>a+b,0)/values.length,p_gt_0_1_mm:values.filter(v=>v>0.1).length/values.length,p_gt_1_mm:values.filter(v=>v>1).length/values.length,p_gt_5_mm:values.filter(v=>v>5).length/values.length});
  }
  const rainD=mix(r,mixRain),gustD=mix(g,mixGust);
  const stamps=[...new Set(Object.values(hour).flatMap(x=>Object.keys(x)))].sort();const rainH=[];

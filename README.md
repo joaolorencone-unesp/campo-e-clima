@@ -142,3 +142,12 @@ Leia [documentação científica e limitações v1.3](docs/MELHORIAS_V13.md) e [
 ## v1.5 — ensembles sob demanda para coordenadas personalizadas
 
 Para locais como Diamantino–MT, a coleta de chuva foi separada da consulta de pulverização. Resultados válidos são exibidos progressivamente, erros de API não se tornam cache válido, e a previsão da Forecast API é usada como **referência distinta**, sem inventar probabilidades multimodelo. Consulte [ATUALIZAR_GITHUB_V15.md](ATUALIZAR_GITHUB_V15.md) para instalação, comportamento e limites da versão.
+
+
+## v1.6 — chuva residual, frequência de tempo seco e concordância dos modelos
+
+A aba **Chuva & ensembles** mostra agora a frequência de **>0,1 mm/dia** ao lado de **>1, >5, >10 e >20 mm/dia**, além da frequência **≤0,1 mm/dia** (praticamente seco) na tabela. A coluna **0,1–1 mm/dia** equivale à diferença `P(>0,1) − P(>1)` na mesma amostra, e não à soma de probabilidades independentes.
+
+Foram acrescentados um gráfico de cenários exclusivos (≤0,1; >0,1–1; >1–5; >5 mm) e uma comparação interativa por ensemble e dia, evidenciando modelos que preveem predominantemente chuva residual. A análise por coordenada personalizada utiliza membros do local escolhido, nunca reaproveitando os de Naviraí.
+
+A tabela horária já tinha >0,1 e >1 mm/h, e agora os gráficos horários e as janelas de 3/6 horas também mostram ambos os limiares. A mistura multimodelo continua com peso total igual por ensemble válido. **São frequências brutas não calibradas, não previsão de chuva observada nem garantia de ocorrência.** Consulte [docs/CENARIOS_CHUVA_V16.md](docs/CENARIOS_CHUVA_V16.md).
