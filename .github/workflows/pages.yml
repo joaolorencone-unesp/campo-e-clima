@@ -39,6 +39,8 @@ jobs:
         run: node tests/test_rain_scenarios_v16.cjs
       - name: Forward 72h and operational classification regression (offline)
         run: node tests/test_forward_browser_v18.cjs
+      - name: INMET groups and radar controls regression (offline)
+        run: node tests/test_ux_v19.cjs
       # NASA POWER and ECMWF extended series update at most once per local day.
       # The cache is shared between scheduled runs, avoiding 48 identical daily requests.
       - name: Set local day for slow-source cache
@@ -76,6 +78,16 @@ jobs:
       # GitHub artifact retention is limited. Move to durable object storage later.
       - name: Export free INMET station metadata for arbitrary farm coordinates
         run: python scripts/export_inmet_catalog.py
+      - name: Restore daily observed-vs-gridded historical archive (Naviraí)
+        uses: actions/cache@v4
+        with:
+          path: site/data/history_daily_cache.json
+          key: history-navirai-v19-${{ env.SLOW_DAY }}
+          restore-keys: |
+            history-navirai-v19-
+      - name: Refresh Naviraí gridded history (NASA POWER and ERA5)
+        continue-on-error: true
+        run: python -m scripts.collect_history_v19
       - name: Archive collected forecast snapshot (up to 90 days)
         uses: actions/upload-artifact@v4
         continue-on-error: true

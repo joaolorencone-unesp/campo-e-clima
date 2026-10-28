@@ -45,7 +45,7 @@
         plot('extended-coordinate-plot',[{type:'bar',x:ext.weeks.map(w=>w.start),y:ext.weeks.map(w=>w.rain_week_mean_api),name:'Precipitação média semanal',marker:{color:'#418dbe'},hovertemplate:'Semana %{x}<br>%{y:.1f} '+esc(ext.precipitation_unit||'unid.')+'<extra></extra>'}],`Média semanal (${ext.precipitation_unit||'unid.'})`);
         $('extended-coordinate-monthly').textContent=Array.isArray(ext.months)&&ext.months.length?`Contexto mensal separado: ${ext.months.map(m=>m.start+' → '+fmt(m.rain_month_mean_api)+' '+(ext.monthly_precipitation_unit||'')).join(' · ')}`:'Sem valores mensais válidos nesta publicação.';
       }else{
-        $('extended-coordinate-status').textContent='ECMWF EC46/SEAS5 não disponível na coleta semanal: '+String(ext.error||ext.note||'Sem semanas completas').slice(0,160)+'. Não será requisitado novamente pelo navegador.';
+        $('extended-coordinate-status').textContent='ECMWF EC46/SEAS5 indisponível nesta coleta semanal. O servidor pode ter excedido o tempo de resposta ou o serviço pode estar limitado. Não serão feitas novas consultas pelo navegador; consulte Qualidade & fontes para diagnóstico.';
         clear('extended-coordinate-plot','EC46 sem dados semanais válidos publicados.');$('extended-coordinate-monthly').textContent='';
       }
       if(gefs.state==='ok'&&Array.isArray(gefs.days)&&gefs.days.length){
@@ -56,7 +56,7 @@
          {type:'scatter',mode:'lines',x:days.map(d=>d.date),y:days.map(d=>d.p90_mm),name:'P90',fill:'tonexty',fillcolor:'rgba(25,122,176,.17)',line:{color:'#85b9d8'}},
          {type:'scatter',mode:'lines+markers',x:days.map(d=>d.date),y:days.map(d=>d.p50_mm),name:'P50',line:{color:'#147aaa',width:3}}
         ],'Chuva GEFS (mm/dia)');
-      }else{$('extended-gefs-status').textContent='GEFS 15–35 dias indisponível nesta coleta: '+String(gefs.error||gefs.note||'Sem membros válidos').slice(0,145)+'. Ausência de dados não significa tempo seco.';clear('extended-gefs-plot','Sem amostra diária GEFS validada.');}
+      }else{$('extended-gefs-status').textContent='GEFS 15–35 dias não disponível nesta coleta (sem membros válidos ou serviço indisponível). Dados ausentes não significam tempo seco; consulte Qualidade & fontes.';clear('extended-gefs-plot','Sem amostra diária GEFS validada.');}
     }catch(e){if(token!==requestNo)return;
       $('extended-coordinate-status').textContent='Não foi possível ler o arquivo publicado: '+String(e.message||e).slice(0,110);
       $('extended-gefs-status').textContent='Sem dados GEFS publicados nesta consulta.';clear('extended-coordinate-plot','Dados indisponíveis.');clear('extended-gefs-plot','Dados indisponíveis.');}

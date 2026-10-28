@@ -86,3 +86,14 @@
 .inline-label{display:inline-flex;align-items:center;gap:8px;color:#456779;font-size:13px;font-weight:650;white-space:nowrap}
 #rain-agreement-day{padding:7px 11px;min-width:105px;font-size:13px}
 @media(max-width:600px){#rain-agreement-panel .panel-head{align-items:flex-start;flex-direction:column}#rain-agreement-day{min-width:140px}}
+/* Campo e Clima v1.9: condensed INMET warnings and weather radar animations */
+.inmet-summary{display:flex;flex-direction:column;gap:4px;padding:13px 16px;background:#fff5e4;border:1px solid #f3d29b;border-radius:12px;color:#73501d;margin-bottom:12px}
+.inmet-summary>strong{font-size:15px}.inmet-summary>span{font-size:12px}
+.inmet-group{border:1px solid #efd7a6;border-left:5px solid #c28a30;border-radius:12px;padding:14px 17px;background:#fffdf8;margin:9px 0}
+.inmet-group-top{display:flex;justify-content:space-between;align-items:start;gap:10px}.inmet-group-top strong{color:#704810;font-size:15px}.inmet-group-top p{margin:5px 0;font-size:13px;color:#795b36}.inmet-group>p{font-size:12px;line-height:1.65}
+.inmet-badge{white-space:nowrap;font-size:11px;padding:5px 8px;background:#faecca;border-radius:20px;color:#785117}.inmet-group details{border-top:1px solid #f0e2c7;padding-top:9px;margin-top:8px}.inmet-group summary{cursor:pointer;font-weight:700;font-size:13px;color:#326b87}.inmet-details p{font-size:12px;margin:7px 0}
+.radar-control{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:11px 13px;background:#f1f8fc;border:1px solid #dae9f1;border-radius:11px;margin:13px 0}
+.radar-control label{display:flex;gap:8px;align-items:center;flex-wrap:wrap;color:#225674;font-size:12px}.radar-control select{max-width:340px;padding:9px;border-radius:8px;border:1px solid #bdd5e2;background:white;color:#264b67}
+.radar-control input[type=range]{flex:1 1 130px;min-width:95px;accent-color:#097ead}.radar-control strong{font-size:12px}
+#history-auto-panel{margin-top:17px}#history-auto-panel table{min-width:570px}#history-auto-status{line-height:1.65}
+@media(max-width:780px){.inmet-group-top{flex-direction:column}.radar-control label{width:100%}.radar-control select{width:100%;max-width:none}}

@@ -1,3 +1,13 @@
+
+## v1.9 — Avisos INMET compactos, radar e histórico automático (28/10/2026)
+
+- Avisos INMET de Naviraí agrupados visualmente por fenômeno e severidade; cada aviso e suas vigências originais continuam disponíveis.
+- Radar **observado** RainViewer em Mapas & nuvens, com quadros passados, hora local e playback; sem garantia de cobertura e sem nowcasting futuro. Previsão Open-Meteo agora representada por nove pontos circulares, não células preenchidas. Links para animações oficiais INMET/INPE.
+- Histórico NASA POWER × ERA5 atualizado diariamente pelo GitHub Actions, em `site/data/history_navirai.json`, com cache e preservação da última coleta bem-sucedida. É estimativa de grade, não estação. Histórico por outras coordenadas continua sob consulta ao abrir a seção respectiva.
+- Máquinas & solo removida da navegação principal por falta de validação, preservando código experimental.
+- Falhas do ECMWF estendido resumidas para leitura; diagnóstico técnico permanece em Qualidade & fontes.
+- Sem novas credenciais embutidas e sem novas APIs pagas. **Leia `docs/MELHORIAS_V19.md` e `ATUALIZAR_GITHUB_V19.md`.**
+
 ## v1.4 — Mapas e imagens de satélite (atualização)
 
 - Aba **🛰 Mapas & nuvens**: mapa por coordenadas, 48 horas de nuvens (total/baixas/médias/altas), chuva e vento em grade Open-Meteo (9 amostras, sem pretensão de alta resolução espacial).

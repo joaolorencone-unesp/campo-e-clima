@@ -441,8 +441,8 @@ function renderOfficial(){
  } else {
   const list=alerts.municipal_alerts||[];
   if(list.length){
-   strip.className='notice warning';strip.textContent=`⚠ ${list.length} aviso(s) INMET retornado(s) com Naviraí (IBGE 5005707) na abrangência municipal. Conferir validade. Consulta: ${checked} (Naviraí).`;
-   box.innerHTML=list.map(a=>`<article class="official-alert-card"><strong>${esc(a.type)} • ${esc(a.severity)}</strong><p>Fonte: ${esc(a.start_date_source)} ${esc(a.start_hour_source||'hora não informada')} até ${esc(a.end_date_source)} ${esc(a.end_hour_source||'hora não informada')} • fuso não confirmado</p><small>Município confirmado pelo código IBGE 5005707. ${esc((a.risks||[]).join(' · ').slice(0,420))}</small></article>`).join('');
+   strip.className='notice warning';strip.textContent=`⚠ INMET: ${list.length} aviso(s) para Naviraí · última consulta ${checked}. Veja o resumo em Observações & fontes. Validade e riscos devem ser confirmados no INMET.`;
+   box.innerHTML=window.CampoAlerts?.render(list)||'<p>Avisos confirmados; consulte a fonte oficial.</p>';
   }else{
    strip.className='notice';strip.textContent='INMET consultado: nenhum aviso da resposta recebida incluiu explicitamente Naviraí (IBGE 5005707). Isso não descarta outros riscos. Consulta: '+checked+' (Naviraí).';
    box.innerHTML='<div class="notice">Nenhum aviso com Naviraí identificado na consulta; verifique novamente a fonte oficial em caso de instabilidade.</div>';
@@ -462,7 +462,7 @@ function renderOfficial(){
    tableFill('inmet-hourly-table',['Hora local (UTC−4)','T °C','UR %','Chuva última hora mm','Vento médio km/h','Rajada km/h','Vento de onde (°)'],records.map(r=>`<tr><td>${esc(r.valid_at_local.slice(0,16).replace('T',' '))}</td>${cell(r.temperature_c)}${cell(r.rh_pct,'',0)}${cell(r.precipitation_previous_hour_mm)}${cell(r.wind_kmh)}${cell(r.gust_kmh)}${cell(r.wind_from_deg,'',0)}</tr>`));
   }else{
    hourlyStatus.className='notice warning';
-   hourlyStatus.innerHTML=`<strong>Leitura horária S735/INMET ainda não confirmada.</strong> ${esc(obsHourly.error||'Endpoint sem valores válidos nesta coleta')}. Não significa chuva ou vento zero. Consulte a <a target="_blank" rel="noopener" href="https://tempo.inmet.gov.br/TabelaEstacoes">tabela oficial do INMET</a> ou os <a target="_blank" rel="noopener" href="https://portal.inmet.gov.br/dadoshistoricos/">arquivos horários históricos gratuitos</a>.`;
+   hourlyStatus.innerHTML=`<strong>Leitura horária S735/INMET ainda não confirmada.</strong> O serviço de leitura horária não retornou registros verificáveis nesta coleta (indisponível/sem acesso). Não significa chuva ou vento zero. Consulte a <a target="_blank" rel="noopener" href="https://tempo.inmet.gov.br/TabelaEstacoes">tabela oficial do INMET</a> ou os <a target="_blank" rel="noopener" href="https://portal.inmet.gov.br/dadoshistoricos/">arquivos horários históricos gratuitos</a>.`;
    if($('inmet-hourly-table'))$('inmet-hourly-table').innerHTML='';
   }
  }
@@ -473,7 +473,7 @@ function renderOfficial(){
   const last=stationObs.records[stationObs.records.length-1];
   obsEl.textContent=`INMET ${stationObs.station_name} (${stationObs.station_code}; ${fmt(stationObs.distance_km,0)} km da sede): ${stationObs.records.length} dia(s) consultados, ${rainRec.length} com chuva observada. Último registro: ${last.date}. Não é medição de Naviraí.`;
  } else {
-  obsEl.textContent=`Observações diárias INMET não confirmadas: ${stationObs.error||'sem resposta válida'}; não significa ausência de chuva.`;
+  obsEl.innerHTML='Observações diárias INMET não confirmadas nesta coleta (sem registros verificáveis). Isso não significa tempo seco. <a target="_blank" rel="noopener" href="https://portal.inmet.gov.br/dadoshistoricos/">Consultar arquivos oficiais ↗</a>.';
  }
  const e=state?.embrapa_observations||{}, records=(['ok','provisional'].includes(e.state)?(e.records||[]):[]);
  const notice=$('embrapa-status');
@@ -536,7 +536,7 @@ function renderExtras(){
   ? `<strong>ECMWF EC46/SEAS5 — TENDÊNCIA SEMANAL (média dos membros):</strong><div class="scroll"><table class="compact"><thead><tr><th>Semana iniciada em</th><th>Precipitação média (${esc(displayUnit)})</th><th>Anomalia (unidade informada pela API)</th><th>T média °C</th></tr></thead><tbody>${weeks.map(w=>`<tr><td>${esc(w.start)}</td><td>${fmt(w.rain_week_mean_api)}</td><td>${fmt(w.rain_anomaly_api)}</td><td>${fmt(w.temperature_mean_c)}</td></tr>`).join('')}</tbody></table></div><small>Fonte: Open-Meteo Seasonal · resolução ~36 km · MÉDIA DE ENSEMBLE, não P10/P90 nem probabilidade calibrada. Não inferir chuva diária ou horário de pulverização. Validade e disponibilidade variam com EC46/SEAS5.</small>`
   : weeks.length
   ? `<strong>Cenários semanais ECMWF:</strong><div class="scroll"><table class="compact"><thead><tr><th>Semana</th><th>P10 mm</th><th>P50 mm</th><th>P90 mm</th><th>Membros</th></tr></thead><tbody>${weeks.map(w=>`<tr><td>${esc(w.start)} a ${esc(w.end)}</td><td>${fmt(w.rain_week_p10_mm)}</td><td>${fmt(w.rain_week_p50_mm)}</td><td>${fmt(w.rain_week_p90_mm)}</td><td>${esc(w.member_count)}</td></tr>`).join('')}</tbody></table></div><small>Frequências não calibradas, grade grosseira.</small>`
-  : '<strong>ECMWF 15–60 dias:</strong> '+esc(ext.error||ext.note||'produto indisponível nesta coleta')+'. Dados faltantes não representam tempo seco.';
+  : '<strong>ECMWF 15–60 dias:</strong> Tendência sazonal indisponível nesta edição (serviço externo sem resposta útil). Consulte novamente após a atualização semanal. Ausência de dados não representa tempo seco. Motivo técnico disponível em Qualidade & fontes.';
  $('source-extra-notes').textContent=owMsg+' Somente fontes gratuitas são consultadas; One Call paga não é utilizada. NASA POWER, ERA5-Land e Previous Runs não são medições de pluviômetros. GOES-19 possui visualização pública externa, sem interpretação automática de imagem local.';
 }
 
