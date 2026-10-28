@@ -9,6 +9,7 @@ import json
 import os
 import pathlib
 import math
+import re
 import time
 from typing import Any
 import requests
@@ -81,10 +82,43 @@ def get_members(payload: dict, base: str) -> list[list[float | None]]:
     hourly = payload.get('hourly', {})
     members = []
     for k, v in hourly.items():
-        if k.startswith(base + '_member') and isinstance(v, list):
+        if re.fullmatch(re.escape(base) + r'_member\d+', k) and isinstance(v, list):
             members.append(v)
     # Some models may publish 'precipitation' as control when indexed members exist.
     return members
+
+
+def next_local_forecast_hour(now_utc: dt.datetime | None = None) -> str:
+    """Next whole-hour local forecast timestamp (precipitation labels END at t).
+
+    Keep daily forecast from local midnight for D0–D6, but hourly decision
+    products must use future start times only. UTC−4 is fixed in Naviraí.
+    """
+    now_utc = now_utc or dt.datetime.now(dt.timezone.utc)
+    if now_utc.tzinfo is None:
+        raise ValueError('UTC instant must be timezone-aware')
+    local = now_utc.astimezone(dt.timezone(dt.timedelta(hours=-4)))
+    return (local.replace(minute=0, second=0, microsecond=0) +
+            dt.timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M')
+
+
+def member_validity(payload: dict, base: str, numeric_min: float = 0.0) -> dict:
+    """Count declared member fields separately from numeric and complete series.
+
+    A declared key containing only nulls is not an available forecasting member.
+    The calculation-specific member count is the count of complete day/window
+    trajectories, and can vary by date.
+    """
+    times = (payload.get('hourly') or {}).get('time') or []
+    declared = get_members(payload, base)
+    numeric = [series for series in declared if len(series) == len(times) and any(
+        isinstance(x, (int, float)) and not isinstance(x, bool) and
+        math.isfinite(x) and x >= numeric_min for x in series)]
+    complete = [series for series in numeric if all(
+        isinstance(x, (int, float)) and not isinstance(x, bool) and
+        math.isfinite(x) and x >= numeric_min for x in series)]
+    return {'declared': len(declared), 'has_numeric': len(numeric),
+            'complete_series': len(complete)}
 
 
 def model_daily_rain(payload: dict) -> dict[str, Any]:
@@ -92,7 +126,7 @@ def model_daily_rain(payload: dict) -> dict[str, Any]:
     times = hourly.get('time', [])
     raw = get_members(payload, 'precipitation')
     if not raw:
-        return {'member_count': 0, 'days': {}}
+        return {'member_count': 0, 'valid_member_count': 0, 'valid_members_by_day': {}, 'days': {}}
     by_date: dict[str, list[int]] = {}
     for i, t in enumerate(times):
         by_date.setdefault(t[:10], []).append(i)
@@ -109,7 +143,7 @@ def model_daily_rain(payload: dict) -> dict[str, Any]:
                 continue
             sums.append(sum(float(x) for x in values))
         out[day] = sums
-    return {'member_count': len(raw), 'days': out}
+    return {'member_count': len(raw), 'valid_member_count': max((len(v) for v in out.values()), default=0), 'valid_members_by_day': {day:len(v) for day,v in out.items()}, 'days': out}
 
 
 def model_daily_gust(payload: dict) -> dict[str, Any]:
@@ -136,7 +170,7 @@ def model_daily_gust(payload: dict) -> dict[str, Any]:
                 continue
             maximums.append(max(float(x) for x in values))
         out[day] = maximums
-    return {'member_count': len(raw), 'days': out}
+    return {'member_count': len(raw), 'valid_member_count': max((len(v) for v in out.values()), default=0), 'valid_members_by_day': {day:len(v) for day,v in out.items()}, 'days': out}
 
 
 def mix_gust_days(by_model: dict[str, dict]) -> list[dict]:
@@ -206,24 +240,31 @@ def mix_days(by_model: dict[str, dict]) -> list[dict]:
 
 
 
-def model_hourly_rain(payload: dict, max_hours: int = 72) -> dict:
-    """Complete-member rainfall totals for forward 1h, 3h and 6h windows.
+def model_hourly_rain(payload: dict, max_hours: int = 72,
+                      future_start: str | None = None) -> dict:
+    """Joint-member precipitation totals for 1h/3h/6h strictly AFTER t.
 
-    Uses member trajectories, not multiplication of marginal probabilities.
-    Only timestamps aligned across members/models are compared. Open-Meteo can
-    interpolate coarser-native-time products to the requested hourly grid.
+    Open-Meteo hourly precipitation labelled t represents the preceding hour
+    (t-1,t]. Therefore a window beginning at t uses t+1 .. t+duration,
+    not the array starting at t. Timestamps are local ISO strings returned by
+    the source; comparison with future_start is lexical ISO local time.
     """
     h = payload.get('hourly') or {}
     times = h.get('time') or []
     raw = get_members(payload, 'precipitation')
     output = {}
-    for start, stamp in enumerate(times[:max_hours]):
+    taken = 0
+    for start, stamp in enumerate(times):
+        if future_start is not None and stamp < future_start:
+            continue
+        if taken >= max_hours:
+            break
+        taken += 1
         for duration in (1, 3, 6):
-            if start + duration > len(times):
+            if start + duration >= len(times):
                 continue
-            # Must be contiguous clock hours; incomplete/coarse timestamps excluded.
             try:
-                datetimes = [dt.datetime.fromisoformat(t) for t in times[start:start+duration]]
+                datetimes = [dt.datetime.fromisoformat(t) for t in times[start:start+duration+1]]
                 if any((b-a) != dt.timedelta(hours=1) for a,b in zip(datetimes,datetimes[1:])):
                     continue
             except ValueError:
@@ -232,8 +273,10 @@ def model_hourly_rain(payload: dict, max_hours: int = 72) -> dict:
             for member in raw:
                 if len(member) != len(times):
                     continue
-                xs = member[start:start+duration]
-                if len(xs) != duration or any(not isinstance(x,(int,float)) or not math.isfinite(x) or x < 0 for x in xs):
+                xs = member[start+1:start+duration+1]
+                if len(xs) != duration or any(
+                    not isinstance(x,(int,float)) or isinstance(x,bool) or
+                    not math.isfinite(x) or x < 0 for x in xs):
                     continue
                 totals.append(sum(float(x) for x in xs))
             if totals:
@@ -285,13 +328,15 @@ def rain_models_comparison(by_model: dict[str,dict]) -> list[dict]:
     return result
 
 def main():
-    recorded = dt.datetime.now(dt.timezone.utc).isoformat()
+    now_utc = dt.datetime.now(dt.timezone.utc)
+    recorded = now_utc.isoformat()
+    hourly_start = next_local_forecast_hour(now_utc)
     result: dict[str, Any] = {'schema_version': 4, 'issued_at_utc': recorded,
              'site': {'latitude': LAT, 'longitude': LON, 'timezone': TZ},
              'methodology': 'Equal total weight per valid ensemble model; uncalibrated member frequencies; forward 1/3/6h totals from joint member trajectories; interpolated hourly grids not independent measurements',
              'sources': {}, 'deterministic': None, 'rain_ensemble_daily': [], 'gust_ensemble_daily': [], 'rain_ensemble_hourly': [], 'rain_models_daily': [], 'ensemble_models': {},
              'spray_joint_hourly': [], 'spray_joint_windows_2h': [], 'spray_joint_model_status': {},
-             'warnings': []}
+             'hourly_forecast_start_local':hourly_start, 'warnings': []}
     try:
         f = forecast()
         result['deterministic'] = {
@@ -332,10 +377,17 @@ def main():
                 fallback_short_horizon = True
             d = model_daily_rain(e)
             g = model_daily_gust(e)
-            hourly_rain = model_hourly_rain(e)
+            hourly_rain = model_hourly_rain(e, future_start=hourly_start)
             result['ensemble_models'][name] = {
-                'code': code, 'precipitation_members': d['member_count'],
-                'gust_members': g['member_count'],
+                'code': code,
+                'precipitation_members': d['valid_member_count'],
+                'precipitation_members_declared': d['member_count'],
+                'precipitation_members_valid_by_day': d['valid_members_by_day'],
+                'gust_members': g['valid_member_count'],
+                'gust_members_declared': g['member_count'],
+                'gust_members_valid_by_day': g['valid_members_by_day'],
+                'precipitation_members_with_numeric':member_validity(e,'precipitation')['has_numeric'],
+                'gust_members_with_numeric':member_validity(e,'wind_gusts_10m')['has_numeric'],
                 'grid_lat': e.get('latitude'), 'grid_lon': e.get('longitude'),
                 'collected_at_utc': dt.datetime.now(dt.timezone.utc).isoformat(),
                 'gust_request_error': gust_request_error,
@@ -352,14 +404,16 @@ def main():
             # Not all models have all spraying inputs. Missing => excluded,
             # NEVER classified as meteorologically favorable.
             try:
-                spray_params = {**base_params(), 'forecast_days': 4,
+                spray_params = {**base_params(), 'forecast_hours': 80,
                                 'hourly': ','.join(['precipitation','temperature_2m',
                                   'relative_humidity_2m','wind_speed_10m',
                                   'wind_direction_10m','wind_gusts_10m'])}
+                spray_params.pop('forecast_days', None)  # hour-based API avoids starting at midnight
                 spray = fetch(ENSEMBLE_URL, {**spray_params, 'models': code})
-                joint = read_joint_members(spray)
+                joint = read_joint_members(spray, future_start=hourly_start)
                 result['spray_joint_model_status'][name] = {
                     'member_fields_complete':joint['members_available'],
+                    'members_valid_per_hour':{t:len(m) for t,m in joint['times'].items()},
                     'member_hour_available':sum(len(x) for x in joint['times'].values()),
                     'status':'ok' if joint['times'] else 'sem_membros_conjuntos_validos'}
                 if joint['times']:by_model_spray[name] = joint

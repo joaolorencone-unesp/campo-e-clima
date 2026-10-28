@@ -151,3 +151,14 @@ A aba **Chuva & ensembles** mostra agora a frequência de **>0,1 mm/dia** ao lad
 Foram acrescentados um gráfico de cenários exclusivos (≤0,1; >0,1–1; >1–5; >5 mm) e uma comparação interativa por ensemble e dia, evidenciando modelos que preveem predominantemente chuva residual. A análise por coordenada personalizada utiliza membros do local escolhido, nunca reaproveitando os de Naviraí.
 
 A tabela horária já tinha >0,1 e >1 mm/h, e agora os gráficos horários e as janelas de 3/6 horas também mostram ambos os limiares. A mistura multimodelo continua com peso total igual por ensemble válido. **São frequências brutas não calibradas, não previsão de chuva observada nem garantia de ocorrência.** Consulte [docs/CENARIOS_CHUVA_V16.md](docs/CENARIOS_CHUVA_V16.md).
+
+
+## Campo e Clima v1.8 — correção temporal e validade dos ensembles
+
+- **Próximas 72 horas:** os cenários de precipitação e pulverização começam na primeira hora inteira futura (Naviraí UTC−4, ou fuso da coordenada na consulta pelo navegador). A previsão diária continua abrangendo dias locais completos. O painel indica separadamente a cobertura horária determinística e a probabilística.
+- **Convenção da Open-Meteo:** a precipitação rotulada `t` acumula a hora anterior `(t−1,t]`. Uma janela de 1/3/6 horas que **começa em `t`** utiliza a precipitação dos horários `t+1` até `t+duracao`. Séries espaçadas de três horas não são convertidas artificialmente em acumulados de uma hora.
+- **Membros válidos:** o inventário apresenta **válidos / declarados**. O cálculo sempre usa membros completos para cada data/janela, com contagens por dia guardadas nos metadados. Campos declarados totalmente `null` não contam como previsões utilizáveis.
+- **Pulverização:** os cenários tradicionais de quatro classes permanecem, mas há também as frequências separadas de **triagem numérica** (passa, marginal, restrita) e um quadro permanente de **verificações operacionais pendentes**. "Indeterminado" não representa chance de inversão ou autorização de aplicação.
+- **Coordenadas:** no navegador, as consultas de chuva e de pulverização também filtram horários anteriores à consulta e preservam o fuso devolvido pela API.
+
+Documentação técnica e limitações: [`docs/CORRECOES_V18.md`](docs/CORRECOES_V18.md). Os testes offline não confirmam disponibilidade futura de todos os modelos na API pública, nem calibração local.

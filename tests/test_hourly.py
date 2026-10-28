@@ -28,8 +28,7 @@ def test_missing_member_window_excluded_no_imputation():
 def test_non_hourly_grid_excluded_for_long_windows():
     times=['2026-10-27T00:00','2026-10-27T03:00','2026-10-27T06:00']
     got=model_hourly_rain({'hourly':{'time':times,'precipitation_member01':[4,3,2]}})
-    assert '1' in {str(k) for k in got[times[0]]}
-    assert 3 not in got[times[0]]
+    assert got == {}  # Three-hourly accumulated rain must not masquerade as 1h rain.
 
 
 def test_model_comparison_uses_member_values():

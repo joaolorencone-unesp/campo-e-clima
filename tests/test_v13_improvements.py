@@ -113,4 +113,5 @@ def test_full_collector_partial_timeout_fallback(tmp_path,monkeypatch):
     assert m['coverage_days']==4
     assert m['precipitation_members']==2
     assert len(result['rain_ensemble_daily'])==4
-    assert len([r for _,r in calls if r.get('forecast_days')==4])==2 # rain fallback + spray attempt
+    assert len([r for _,r in calls if r.get('forecast_days')==4])==1 # rain fallback only
+    assert len([r for _,r in calls if r.get('forecast_hours')==80])==1 # spray begins from current hour

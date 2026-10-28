@@ -70,6 +70,16 @@ function weightedQuantile(pairs,q){const values=pairs.slice().sort((a,b)=>a[0]-b
 function mix(modelSamples,formatRow){const keys=[...new Set(Object.values(modelSamples).flatMap(m=>Object.keys(m)))].sort();const results=[];for(const key of keys){const valid=Object.entries(modelSamples).filter(([,r])=>Array.isArray(r[key])&&r[key].length>0);if(!valid.length)continue;const pairs=valid.flatMap(([,r])=>r[key].map(x=>[x,1/valid.length/r[key].length]));const row=formatRow(key,pairs);row.model_count=valid.length;row.member_count=pairs.length;results.push(row);}return results;}
 function mixRain(day,pairs){const o={date:day,mean_mm:0,p10_mm:weightedQuantile(pairs,.1),p50_mm:weightedQuantile(pairs,.5),p90_mm:weightedQuantile(pairs,.9)};for(const [v,w] of pairs)o.mean_mm+=v*w;for(const l of [.1,1,3,5,10,20,30,50])o['p_gt_'+String(l).replace('.','_')+'_mm']=pairs.reduce((s,[v,w])=>s+(v>l?w:0),0);return o;}
 function mixGust(day,pairs){const o={date:day,mean_kmh:0,p10_kmh:weightedQuantile(pairs,.1),p50_kmh:weightedQuantile(pairs,.5),p90_kmh:weightedQuantile(pairs,.9)};for(const [v,w] of pairs)o.mean_kmh+=v*w;for(const l of [30,40,60,80])o['p_gt_'+l+'_kmh']=pairs.reduce((s,[v,w])=>s+(v>l?w:0),0);return o;}
+function memberStampMillis(stamp,payload){
+ // Open-Meteo returns local timestamps without UTC offset; use response metadata.
+ // For an old synthetic fixture lacking offset, tests still exercise the algorithm.
+ const offset=payload?.utc_offset_seconds;
+ if(!Number.isFinite(offset))return null;
+ const sign=offset<0?'-':'+';
+ const hh=String(Math.floor(Math.abs(offset)/3600)).padStart(2,'0');
+ const mm=String(Math.floor((Math.abs(offset)%3600)/60)).padStart(2,'0');
+ return Date.parse(stamp+sign+hh+':'+mm);
+}
 function computeModel(payload){
  const h=payload.hourly||{},times=h.time||[];
  const rain=members(payload,'precipitation'),gust=members(payload,'wind_gusts_10m');
@@ -81,15 +91,33 @@ function computeModel(payload){
   const g=gust.flatMap(m=>{const v=ids.map(i=>m[i]);return v.every(x=>finite(x)&&x>=0)?[Math.max(...v)]:[];});
   if(r.length)dR[day]=r;if(g.length)dG[day]=g;
  }
- for(let i=0;i<Math.min(times.length,72);i++){
-  const row={};for(const duration of [1,3,6]){if(i+duration>times.length)continue;
-   const stamps=times.slice(i,i+duration).map(t=>Date.parse(t+'Z'));
+ let futureCount=0;
+ for(let i=0;i<times.length&&futureCount<72;i++){
+  const when=memberStampMillis(times[i],payload);
+  if(when!==null && (!Number.isFinite(when)||when<=Date.now()))continue;
+  futureCount++;
+  const row={};
+  for(const duration of [1,3,6]){
+   // Rainfall labelled t is accumulated over (t-1,t]. For a window
+   // STARTING t use indices t+1 ... t+duration, never precipitation[t].
+   if(i+duration>=times.length)continue;
+   const stamps=times.slice(i,i+duration+1).map(t=>Date.parse(t+'Z'));
    if(stamps.some((x,j)=>j&&x-stamps[j-1]!==3600000))continue;
-   const valid=rain.flatMap(m=>{const v=m.slice(i,i+duration);return v.length===duration&&v.every(x=>finite(x)&&x>=0)?[v.reduce((a,b)=>a+b,0)]:[];});
+   const valid=rain.flatMap(m=>{
+    if(m.length!==times.length)return [];
+    const v=m.slice(i+1,i+duration+1);
+    return v.length===duration&&v.every(x=>finite(x)&&x>=0)?[v.reduce((a,b)=>a+b,0)]:[];
+   });
    if(valid.length)row[duration]=valid;
-  }if(Object.keys(row).length)hr[times[i]]=row;
+  }
+  if(Object.keys(row).length)hr[times[i]]=row;
  }
- return {r:dR,g:dG,h:hr,member_rain:rain.length,member_gust:gust.length};
+ return {r:dR,g:dG,h:hr,
+  member_rain:Math.max(0,...Object.values(dR).map(x=>x.length)),
+  member_gust:Math.max(0,...Object.values(dG).map(x=>x.length)),
+  member_rain_declared:rain.length,member_gust_declared:gust.length,
+  member_rain_by_day:Object.fromEntries(Object.entries(dR).map(([d,x])=>[d,x.length])),
+  member_gust_by_day:Object.fromEntries(Object.entries(dG).map(([d,x])=>[d,x.length]))};
 }
 const JOINT_KEYS=['temperature_2m','relative_humidity_2m','wind_speed_10m','wind_gusts_10m','wind_direction_10m','precipitation'];
 const JOINT_KINDS=['herb','fung','insect'];
@@ -102,7 +130,11 @@ function readJoint(payload){
  let common=null;for(const f of JOINT_KEYS){const ids=new Set(byField[f].keys());common=common===null?ids:new Set([...common].filter(x=>ids.has(x)));}
  const output={members_available:common?.size||0,times:{}};
  if(!common?.size)return output;
- for(let i=0;i<Math.min(times.length-3,74);i++){
+ let futureCount=0;
+ for(let i=0;i<times.length-3&&futureCount<72;i++){
+  const when=memberStampMillis(times[i],payload);
+  if(when!==null && (!Number.isFinite(when)||when<=Date.now()))continue;
+  futureCount++;
   const stamps=times.slice(i,i+4).map(t=>Date.parse(t+'Z'));
   if(stamps.length!==4||stamps.some((x,j)=>j&&x-stamps[j-1]!==3600000))continue;
   const obj={};for(const id of common){
@@ -113,7 +145,11 @@ function readJoint(payload){
    if(nextRain.length!==3||nextRain.some(x=>!finite(x)||x<0))continue;
    v.rain3=nextRain.reduce((a,b)=>a+b,0);
    if(v.relative_humidity_2m<0||v.relative_humidity_2m>100||v.wind_speed_10m<0||v.wind_gusts_10m<0||v.wind_direction_10m<0||v.wind_direction_10m>360)continue;
-   obj[id]=Object.fromEntries(JOINT_KINDS.map(kind=>[kind,jointAssessment(v,kind,Number(times[i].slice(11,13)))]));
+   obj[id]=Object.fromEntries(JOINT_KINDS.map(kind=>{
+    const full=jointAssessment(v,kind,Number(times[i].slice(11,13)));
+    const numeric=jointAssessment(v,kind,null);
+    return [kind,{...full,numeric_cls:numeric.cls}];
+   }));
   }if(Object.keys(obj).length)output.times[times[i]]=obj;
  }
  return output;
@@ -131,20 +167,28 @@ function mixJointEvent(byModel, field){
  const time=[...new Set(Object.values(byModel).flatMap(m=>Object.keys(m.times||{})))].sort();const result=[];
  const summary=({modelEntries,kind})=>{
   const entries=modelEntries.filter(([,m])=>Object.keys(m).length);if(!entries.length)return null;
-  const weights={passa:0,marginal:0,restrito:0,indeterminado:0},reasons={};let members=0;
+  const weights={passa:0,marginal:0,restrito:0,indeterminado:0},numeric={passa:0,marginal:0,restrito:0},reasons={};let members=0;
   for(const [,byMember] of entries){const ids=Object.keys(byMember);members+=ids.length;
    for(const value of Object.values(byMember)){const w=1/entries.length/ids.length;const assessment=value[kind];
     if(!assessment)continue;weights[assessment.cls]+=w;
+    const numericCls=assessment.numeric_cls||(assessment.cls==='indeterminado'?'passa':assessment.cls);
+    if(Object.hasOwn(numeric,numericCls))numeric[numericCls]+=w;
     for(const cause of assessment.reasons)reasons[cause]=(reasons[cause]||0)+w;
    }
   }
-  return {models:entries.length,members,passa:weights.passa,marginal:weights.marginal,restrito:weights.restrito,indeterminado:weights.indeterminado,reasons};
+  return {models:entries.length,members,passa:weights.passa,marginal:weights.marginal,restrito:weights.restrito,
+   indeterminado:weights.indeterminado,numeric_passa:numeric.passa,
+   numeric_marginal:numeric.marginal,numeric_restrito:numeric.restrito,
+   operational_pending:['inversao_e_estabilidade_nao_verificadas','bula_e_receptores_nao_verificados'],reasons};
  };
  for(const t of time){let entry=[];
   if(field==='hour'){entry=Object.entries(byModel).filter(([,m])=>m.times?.[t]).map(([name,m])=>[name,m.times[t]]);}
   else{const end=new Date(Date.parse(t+'Z')+3600000).toISOString().slice(0,16);
    entry=Object.entries(byModel).map(([name,m])=>{const a=m.times?.[t],b=m.times?.[end];if(!a||!b)return [name,{}];const both={};
-    for(const id of Object.keys(a)){if(!b[id])continue;both[id]={};for(const kind of JOINT_KINDS){const aa=a[id][kind],bb=b[id][kind];const cls=[aa.cls,bb.cls].includes('restrito')?'restrito':[aa.cls,bb.cls].includes('indeterminado')?'indeterminado':[aa.cls,bb.cls].includes('marginal')?'marginal':'passa';both[id][kind]={cls,reasons:[...new Set([...aa.reasons,...bb.reasons])]};}}
+    for(const id of Object.keys(a)){if(!b[id])continue;both[id]={};for(const kind of JOINT_KINDS){const aa=a[id][kind],bb=b[id][kind];const cls=[aa.cls,bb.cls].includes('restrito')?'restrito':[aa.cls,bb.cls].includes('indeterminado')?'indeterminado':[aa.cls,bb.cls].includes('marginal')?'marginal':'passa';const na=aa.numeric_cls||(aa.cls==='indeterminado'?'passa':aa.cls);
+     const nb=bb.numeric_cls||(bb.cls==='indeterminado'?'passa':bb.cls);
+     const numeric_cls=[na,nb].includes('restrito')?'restrito':[na,nb].includes('marginal')?'marginal':'passa';
+     both[id][kind]={cls,numeric_cls,reasons:[...new Set([...aa.reasons,...bb.reasons])]};}}
     return [name,both];}).filter(([,m])=>Object.keys(m).length);
   }
   if(!entry.length)continue;
@@ -162,7 +206,10 @@ function summarizeEnsembles(results){
   const c=computed;r[name]=c.r;g[name]=c.g;hour[name]=c.h;
   if(results[name].spray?.times&&Object.keys(results[name].spray.times).length){sprayModels[name]=results[name].spray;sprayStatuses[name]={status:'ok',member_fields_complete:results[name].spray.members_available};}
   else sprayStatuses[name]={status:'indisponivel',detail:results[name].sprayError||'sem variáveis conjuntas completas'};
-  models[name]={state:Object.keys(c.r).length?'ok':'no_valid_daily_rain_members',precipitation_members:c.member_rain,gust_members:Object.values(c.g).some(a=>a.length)?c.member_gust:0,grid_lat:payload.latitude,grid_lon:payload.longitude,code:MODELS[name]};
+  models[name]={state:Object.keys(c.r).length?'ok':'no_valid_daily_rain_members',precipitation_members:c.member_rain,precipitation_members_declared:c.member_rain_declared,
+   precipitation_members_valid_by_day:c.member_rain_by_day,
+   gust_members:c.member_gust,gust_members_declared:c.member_gust_declared,
+   gust_members_valid_by_day:c.member_gust_by_day,grid_lat:payload.latitude,grid_lon:payload.longitude,code:MODELS[name]};
   for(const [day,values] of Object.entries(c.r))if(values.length)comparison.push({model:name,date:day,members:values.length,mean_mm:values.reduce((a,b)=>a+b,0)/values.length,p_gt_0_1_mm:values.filter(v=>v>0.1).length/values.length,p_gt_1_mm:values.filter(v=>v>1).length/values.length,p_gt_5_mm:values.filter(v=>v>5).length/values.length});
  }
  const rainD=mix(r,mixRain),gustD=mix(g,mixGust);
@@ -244,7 +291,7 @@ async function requestSprayEnsembles(point,token,key){
    if(token!==generation)return;
    try{
     const params={latitude:point.latitude,longitude:point.longitude,timezone:'auto',
-      forecast_days:4,models:MODELS[name],hourly:JOINT_KEYS.join(',')};
+      forecast_hours:80,models:MODELS[name],hourly:JOINT_KEYS.join(',')};
     const payload=await getJSON(pars(OM_ENSEMBLE,params),27);
     if(token!==generation)return;
     const spray=readJoint(payload),computed=computeModel(payload);

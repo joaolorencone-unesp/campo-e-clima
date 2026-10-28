@@ -74,7 +74,8 @@ def classify_member(values: dict[str, float], kind: str, local_hour: int | None 
     return 'passa', set()
 
 
-def read_joint_members(payload: dict, max_hours: int = 74) -> dict:
+def read_joint_members(payload: dict, max_hours: int = 72,
+                       future_start: str | None = None) -> dict:
     """Return member-correlated weather screening events by timestamp.
 
     Incomplete future 3h rain window and any missing essential variable exclude
@@ -87,7 +88,13 @@ def read_joint_members(payload: dict, max_hours: int = 74) -> dict:
     if not member_ids:
         return {'members_available': 0, 'times': {}}
     out: dict[str, dict] = {}
-    for i, stamp in enumerate(times[:max_hours]):
+    future_count = 0
+    for i, stamp in enumerate(times):
+        if future_start is not None and stamp < future_start:
+            continue
+        if future_count >= max_hours:
+            break
+        future_count += 1
         # We need current data at i and the three FUTURE rain hours i+1..i+3.
         if i + 4 > len(times):
             continue
@@ -107,7 +114,11 @@ def read_joint_members(payload: dict, max_hours: int = 74) -> dict:
                 if any(not finite(x) for x in values.values()):
                     continue
                 values['rain_next_3h_mm'] = sum(rain)
-                statuses = {kind: classify_member(values, kind, dt.datetime.fromisoformat(stamp).hour) for kind in CATEGORIES}
+                statuses = {}
+                for kind in CATEGORIES:
+                    operational, reasons = classify_member(values, kind, dt.datetime.fromisoformat(stamp).hour)
+                    numeric, _ = classify_member(values, kind, None)
+                    statuses[kind] = (operational, reasons, numeric)
                 if any(v[0]=='invalid' for v in statuses.values()):
                     continue
                 event[member] = statuses
@@ -125,19 +136,29 @@ def _summarize(candidates: dict[str, dict[str, tuple[str, set[str]]]], kind: str
     mass = {'passa': 0., 'marginal': 0., 'restrito': 0., 'indeterminado': 0.}
     reason_mass = defaultdict(float)
     n = 0
+    numeric_mass = {'passa':0., 'marginal':0., 'restrito':0.}
     for model, members in valid.items():
         n += len(members)
         w = model_weight/len(members)
         for statuses in members.values():
-            cls, reasons = statuses[kind]
+            cls, reasons = statuses[kind][:2]
             if cls == 'invalid': continue
             mass[cls] += w
+            numeric = statuses[kind][2] if len(statuses[kind]) >= 3 else (
+                'passa' if cls == 'indeterminado' else cls)
+            if numeric in numeric_mass:
+                numeric_mass[numeric] += w
             for reason in reasons:
                 reason_mass[reason] += w
     return {'models': len(valid), 'members': n,
             'passa': round(mass['passa'],4), 'marginal': round(mass['marginal'],4),
             'restrito': round(mass['restrito'],4),
             'indeterminado': round(mass['indeterminado'],4),
+            'numeric_passa':round(numeric_mass['passa'],4),
+            'numeric_marginal':round(numeric_mass['marginal'],4),
+            'numeric_restrito':round(numeric_mass['restrito'],4),
+            'operational_pending':['inversao_e_estabilidade_nao_verificadas',
+                                   'bula_e_receptores_nao_verificados'],
             'reasons': {key:round(v,4) for key,v in sorted(reason_mass.items())}}
 
 
@@ -170,13 +191,16 @@ def mix_joint_windows2h(by_model: dict[str, dict]) -> list[dict]:
             for member in common:
                 combined={}
                 for kind in CATEGORIES:
-                    ca,ra=a[member][kind];cb,rb=b[member][kind]
+                    ca,ra=a[member][kind][:2];cb,rb=b[member][kind][:2]
                     if 'invalid' in (ca,cb):c='invalid'
                     elif 'restrito' in (ca,cb):c='restrito'
                     elif 'indeterminado' in (ca,cb):c='indeterminado'
                     elif 'marginal' in (ca,cb):c='marginal'
                     else:c='passa'
-                    combined[kind]=(c,ra|rb)
+                    na=a[member][kind][2] if len(a[member][kind])>=3 else ('passa' if ca=='indeterminado' else ca)
+                    nb=b[member][kind][2] if len(b[member][kind])>=3 else ('passa' if cb=='indeterminado' else cb)
+                    nc='restrito' if 'restrito' in (na,nb) else ('marginal' if 'marginal' in (na,nb) else 'passa')
+                    combined[kind]=(c,ra|rb,nc)
                 candidates[name][member]=combined
         if candidates:
             row={'start':start,'end':end}
