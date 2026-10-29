@@ -1,3 +1,12 @@
+## v2.1 — Central Agro e retrospectiva meteorológica recente (28/10/2026)
+
+- Nova aba **🌱 Central Agro**: filtro por operação (pulverização, plantio, colheita e irrigação), 24/48/72 h de previsão, chuva, vento, rajadas, UR/VPD e restrições por horário.
+- Comparação **>0,1 mm vs. >1 mm** dos ensembles válidos, com fonte, contagem de modelos/membros e aviso de **frequências não calibradas**.
+- Formulário experimental para operação com **DJI Agras T100** (cultura, altura pretendida, gotas, áreas sensíveis e itens de verificação), sem prescrição automática de altura, dose ou liberação de pulverização.
+- **Ontem/anteontem** para Naviraí, Diamantino ou outras coordenadas, sob demanda, via Open-Meteo Forecast `past_days=4`; retrospectiva **modelada**, não observação de estação.
+- Proteção contra mistura de previsões de cidades diferentes; série incompleta não é tratada como chuva zero; testes automatizados e simulação no Chromium.
+- Sem nova API paga, sem credenciais embutidas. Veja `docs/CENTRAL_AGRO_V21.md` e `ATUALIZAR_GITHUB_V21.md`.
+
 
 ## v1.9 — Avisos INMET compactos, radar e histórico automático (28/10/2026)
 

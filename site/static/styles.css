@@ -109,3 +109,28 @@
 .radar-control label:has(#radar-speed){gap:5px}.radar-control label #radar-speed{min-width:74px;width:74px;padding:8px 5px}
 #radar-frame-time{flex-basis:100%;line-height:1.6}
 @media(max-width:660px){.radar-control{gap:8px}.radar-control button{flex:1 0 auto}.map-scale-item{min-width:41px}.map-scale-item i{width:43px}.map-source-banner{align-items:flex-start;flex-direction:column}}
+
+/* Campo e Clima v2.1 • transparent agrometeorological decision cockpit */
+.agro-hero{background:linear-gradient(120deg,#ffffff 57%,#edf8f4 100%);border:1px solid #c9e4de}
+.agro-settings,.agro-plan-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;align-items:end}
+.agro-settings label,.agro-plan-grid label{display:flex;flex-direction:column;gap:5px;color:#436477;font-weight:700;font-size:12px}
+.agro-settings select,.agro-plan-grid input,.agro-plan-grid select{width:100%;min-width:0;max-width:100%;border:1px solid #bfd6e2;border-radius:9px;background:white;color:#23445d;padding:10px 9px;min-height:42px}
+.agro-settings button{align-self:end;min-height:42px}
+.agro-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:16px 0}
+.agro-kpi{border:1px solid #d9e8ec;border-radius:13px;background:white;padding:14px;min-height:112px;box-shadow:0 3px 12px #0a3f5f09}
+.agro-kpi small{display:block;font-size:11px;color:#587a8b;font-weight:650;line-height:1.45}
+.agro-kpi strong{display:block;font-size:27px;color:#173e59;line-height:1.4;margin:4px 0}
+.agro-kpi span{font-size:11px;color:#678195}
+.agro-insights{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.agro-insight{border:1px solid #cde1eb;border-left:4px solid #2a8aa9;border-radius:10px;background:#f7fbfd;padding:13px 16px;line-height:1.6;font-size:13px;color:#274b62}
+.agro-insight.warn{border-left-color:#d18b33;background:#fffaf1;border-color:#f1e2be}.agro-insight.danger{border-left-color:#c65351;background:#fff7f5;border-color:#f1d8d4}
+.agro-insight>strong{display:block;font-size:14px;margin-bottom:3px}
+.agro-details{align-items:start}.agro-details>.panel{min-width:0}
+.agro-hours-table{min-width:780px}.agro-hours-table td{font-size:12px}.agro-status{display:inline-block;white-space:nowrap;padding:4px 7px;border-radius:6px;font-weight:700;font-size:11px;background:#eaf1f6;color:#4b687a}
+.agro-status.restrita{background:#fce5e2;color:#a63f36}.agro-status.marginal{background:#fff0d7;color:#945d1e}.agro-status.triagem{background:#def1e8;color:#17684b}.agro-status.indeterminada{background:#e9edf2;color:#566679}
+.agro-checklist{display:flex;flex-direction:column;gap:10px;margin:16px 0;font-size:13px;color:#345369}.agro-checklist label{display:flex;gap:9px;align-items:flex-start}.agro-checklist input{margin-top:4px}
+.agro-historical{margin-top:16px}.agro-historical table{min-width:660px}.agro-historical button{margin-top:10px}
+@media(max-width:1050px){.agro-settings,.agro-plan-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.agro-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:650px){.agro-settings,.agro-plan-grid,.agro-kpis,.agro-insights{grid-template-columns:1fr}.agro-hero{background:white}.agro-kpi{min-height:85px}}
+.agro-hours-table{border-collapse:separate;border-spacing:0}.agro-hours-table thead th{position:sticky;top:0;background:#eaf3f8;z-index:2}
+.agro-details .scroll:has(.agro-hours-table){max-height:445px;overflow:auto}

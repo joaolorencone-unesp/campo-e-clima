@@ -43,6 +43,8 @@ jobs:
         run: node tests/test_ux_v19.cjs
       - name: Radar playback, UTC/local time and quantitative legend regression (offline)
         run: node tests/test_maps_controls_v20.cjs
+      - name: Central Agro decision rules and recent-history regression (offline)
+        run: node tests/test_agro_cockpit_v21.cjs
       # NASA POWER and ECMWF extended series update at most once per local day.
       # The cache is shared between scheduled runs, avoiding 48 identical daily requests.
       - name: Set local day for slow-source cache

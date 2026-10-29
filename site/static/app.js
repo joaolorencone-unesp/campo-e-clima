@@ -613,6 +613,7 @@ function render(){
  const guards=[()=>renderOverview(idx),()=>renderRain(idx),()=>renderWind(idx),()=>renderSpray(idx),ensembleScreening,renderMachines,renderVerification,renderOfficial,renderExtras,renderFreeResearch,renderCalendar];
  for(const f of guards){try{f();}catch(err){console.error('Render failure',err);}}
  redrawActive();
+ window.dispatchEvent(new CustomEvent('campo:forecast-rendered'));
  if(document.getElementById('wind')?.classList.contains('active'))window.CampoMaps?.readCompass?.();
  document.querySelectorAll('.plot').forEach(el=>{
   if(!chartSpecs.has(el.id) && !el.classList.contains('js-plotly-plot')){
