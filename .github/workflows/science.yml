@@ -1,0 +1,44 @@
+name: Scientific history and experimental verification
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 13 * * *'
+permissions:
+  contents: read
+concurrency:
+  group: weather-archive-writer
+  cancel-in-progress: false
+jobs:
+  science:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements-science.txt
+      - name: Offline scientific regression
+        run: python -m pytest -q tests/test_science_v22.py
+      - name: Daily fixed-lead deterministic history (bounded seven days)
+        run: python -m scripts.science_daily
+      - name: Preserve history and evaluate; weekly shadow experiments only
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AI_PROVIDER: none
+          AI_ENABLE: '0'
+          AI_ALLOW_PAID: '0'
+        run: |
+          EXTRA=""
+          if [ "$(date -u +%u)" = "1" ]; then EXTRA="--train"; fi
+          python -m scripts.archive_git --captures runtime/imports --push $EXTRA
+      - name: Diagnostic log (temporary transport, not permanent archive)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scientific-status-${{ github.run_id }}
+          path: runtime/daily_status.json
+          retention-days: 7

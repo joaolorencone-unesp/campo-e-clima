@@ -1,3 +1,19 @@
+# Campo e Clima v2.2 — candidato de ciência e rastreabilidade
+
+Desenvolvimento sobre a v2.1 existente, commit de origem `e1241e2`. A branch `feature/v2.2-ciencia-e-rastreabilidade` contém o código para revisão; main não foi alterada.
+
+- Arquivo RAW por SHA-256, SQLite reconstruível, Parquet e scripts de recuperação.
+- Naviraí e Diamantino separados; membros dos oito ensembles preservados quando retornam.
+- Previous Runs, Single Runs e Historical Forecast com identidades metodológicas diferentes.
+- Nova aba **🔬 Precisão dos modelos**. Sem observação confiável, mostra o diagnóstico real de ausência de validação.
+- IA opcional, padrão none, sem chamadas externas pagas.
+
+[Arquitetura e auditoria](docs/ARCHITECTURE.md) · [Reproduzir no Windows](docs/REPRODUCIBILITY.md) · [Publicação/Actions](ATUALIZAR_GITHUB_V22.md) · [Limitações atuais](docs/RELEASES/v2.2-status.md) · [Changelog](docs/CHANGELOG.md).
+
+Os novos workflows estão preparados, mas dependem de publicação aprovada em main para iniciar no GitHub. Nenhuma melhoria de precisão foi demonstrada. As notas abaixo documentam versões anteriores e não substituem o estado v2.2 acima.
+
+---
+
 ## v2.1 — Central Agro e retrospectiva meteorológica recente (28/10/2026)
 
 - Nova aba **🌱 Central Agro**: filtro por operação (pulverização, plantio, colheita e irrigação), 24/48/72 h de previsão, chuva, vento, rajadas, UR/VPD e restrições por horário.

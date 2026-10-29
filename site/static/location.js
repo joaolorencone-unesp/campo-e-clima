@@ -87,7 +87,9 @@ function computeModel(payload){
  const dR={},dG={},hr={},rainMeans=[];
  for(const [day,ids] of Object.entries(days).slice(0,7)){
   if(ids.length!==24)continue;
-  const r=rain.flatMap(m=>{const v=ids.map(i=>m[i]);return v.every(x=>finite(x)&&x>=0)?[v.reduce((a,b)=>a+b,0)]:[];});
+  const rainIds=times.map((t,i)=>({i,day:new Date(Date.parse(t+'Z')-3600000).toISOString().slice(0,10)})).filter(x=>x.day===day).map(x=>x.i);
+  const rainComplete=rainIds.length===24 && times[rainIds[0]].slice(11,16)==='01:00' && times[rainIds[23]].slice(11,16)==='00:00' && rainIds.every((i,j)=>!j||Date.parse(times[i]+'Z')-Date.parse(times[rainIds[j-1]]+'Z')===3600000);
+  const r=rainComplete?rain.flatMap(m=>{const v=rainIds.map(i=>m[i]);return m.length===times.length&&v.every(x=>finite(x)&&x>=0)?[v.reduce((a,b)=>a+b,0)]:[];}):[];
   const g=gust.flatMap(m=>{const v=ids.map(i=>m[i]);return v.every(x=>finite(x)&&x>=0)?[Math.max(...v)]:[];});
   if(r.length)dR[day]=r;if(g.length)dG[day]=g;
  }

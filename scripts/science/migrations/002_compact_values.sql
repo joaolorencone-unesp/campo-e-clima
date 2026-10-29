@@ -1,0 +1,12 @@
+CREATE TABLE forecast_run_keys(run_key INTEGER PRIMARY KEY, run_id TEXT NOT NULL UNIQUE REFERENCES forecast_runs(id));
+INSERT INTO forecast_run_keys(run_id) SELECT id FROM forecast_runs ORDER BY id;
+ALTER TABLE forecast_values RENAME TO forecast_values_legacy;
+CREATE TABLE forecast_values(run_id INTEGER NOT NULL REFERENCES forecast_run_keys(run_key), valid_at_utc TEXT NOT NULL, variable TEXT NOT NULL, original_unit TEXT, unit TEXT, interval_start_utc TEXT, interval_end_utc TEXT, lead_hours REAL, lead_basis TEXT NOT NULL, original_value REAL, value REAL, qc TEXT NOT NULL, missing INTEGER NOT NULL, PRIMARY KEY(run_id,valid_at_utc,variable,lead_basis)) WITHOUT ROWID;
+INSERT INTO forecast_values SELECT k.run_key,v.valid_at_utc,v.variable,v.original_unit,v.unit,v.interval_start_utc,v.interval_end_utc,v.lead_hours,v.lead_basis,v.original_value,v.value,v.qc,v.missing FROM forecast_values_legacy v JOIN forecast_run_keys k ON k.run_id=v.run_id;
+DROP TABLE forecast_values_legacy;
+CREATE INDEX forecast_valid ON forecast_values(variable,valid_at_utc);
+ALTER TABLE ensemble_forecasts RENAME TO ensemble_forecasts_legacy;
+CREATE TABLE ensemble_forecasts(run_id INTEGER NOT NULL REFERENCES forecast_run_keys(run_key), valid_at_utc TEXT NOT NULL, variable TEXT NOT NULL, member_id TEXT NOT NULL, original_unit TEXT, unit TEXT, interval_start_utc TEXT, interval_end_utc TEXT, lead_hours REAL, lead_basis TEXT NOT NULL, original_value REAL, value REAL, qc TEXT NOT NULL, missing INTEGER NOT NULL, PRIMARY KEY(run_id,valid_at_utc,variable,member_id,lead_basis)) WITHOUT ROWID;
+INSERT INTO ensemble_forecasts SELECT k.run_key,v.valid_at_utc,v.variable,v.member_id,v.original_unit,v.unit,v.interval_start_utc,v.interval_end_utc,v.lead_hours,v.lead_basis,v.original_value,v.value,v.qc,v.missing FROM ensemble_forecasts_legacy v JOIN forecast_run_keys k ON k.run_id=v.run_id;
+DROP TABLE ensemble_forecasts_legacy;
+CREATE INDEX ensemble_valid ON ensemble_forecasts(variable,valid_at_utc);

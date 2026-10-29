@@ -1,0 +1,110 @@
+{
+  "backup": {
+    "path": "runtime/backups/science_v22_verified.sqlite",
+    "sha256": "6dfca0c9c89235092866d6b14d980ad1069cfc0d39dc1f138740abfa4e8d9216"
+  },
+  "browser": {
+    "base": "http://127.0.0.1:8776",
+    "cases": [
+      {
+        "horizontal_overflow": false,
+        "js_errors": [],
+        "locality_filter": "verified",
+        "mobile": false,
+        "precision_empty_state": "verified",
+        "tabs": [
+          "overview",
+          "agro",
+          "rain",
+          "observations",
+          "maps",
+          "wind",
+          "spray",
+          "precision",
+          "verification",
+          "extended",
+          "history-nasa"
+        ]
+      },
+      {
+        "horizontal_overflow": false,
+        "js_errors": [],
+        "locality_filter": "verified",
+        "mobile": true,
+        "precision_empty_state": "verified",
+        "tabs": [
+          "overview",
+          "agro",
+          "rain",
+          "observations",
+          "maps",
+          "wind",
+          "spray",
+          "precision",
+          "verification",
+          "extended",
+          "history-nasa"
+        ]
+      }
+    ],
+    "checked_at_utc": "2026-10-29T05:04:50.338Z"
+  },
+  "calibration_validated": false,
+  "checked_at_utc": "2026-10-29T05:06:17+00:00",
+  "github_actions_executed": false,
+  "javascript_offline_suites": 12,
+  "limitations": [
+    "INMET unavailable during integration probes",
+    "No real local calibration accuracy claim",
+    "Ollama service unavailable",
+    "No exhaustive backfill since 2024",
+    "No GitHub deployment validation"
+  ],
+  "official_observation_count": 0,
+  "python_tests": {
+    "failed": 0,
+    "passed": 137
+  },
+  "raw_manifests_verified": 8,
+  "remote_changes": false,
+  "schema_migration": "1 -> 2, data counts preserved",
+  "sqlite": {
+    "bytes": 84418560,
+    "counts": {
+      "ai_explanations": 1,
+      "calibration_datasets": 0,
+      "calibration_models": 0,
+      "calibration_predictions": 0,
+      "data_quality_flags": 6,
+      "ensemble_forecasts": 487968,
+      "ensemble_members": 299,
+      "forecast_run_keys": 40,
+      "forecast_runs": 40,
+      "forecast_values": 27888,
+      "forecast_verifications": 0,
+      "locations": 2,
+      "model_evaluations": 0,
+      "model_versions": 0,
+      "observations": 0,
+      "observing_stations": 0,
+      "pipeline_executions": 8,
+      "raw_assets": 46,
+      "reanalysis_values": 0,
+      "schema_migrations": 2,
+      "system_versions": 1,
+      "weather_models": 10,
+      "weather_sources": 1
+    },
+    "foreign_key_violations": 0,
+    "integrity": "ok",
+    "path": "runtime/science_v22.sqlite"
+  },
+  "final_directory": "C:\\Users\\Usuario\\OneDrive - Unesp\\Documentos\\___drone\\PAINEL_CLIMA\\campo-e-clima-v2.2",
+  "final_directory_pytest": "137 passed in 4.75s",
+  "final_directory_node_suites": 12,
+  "all_static_javascript_syntax": "passed",
+  "yaml_syntax": "passed",
+  "source_python_syntax": "passed",
+  "final_preview_http_status": 200,
+  "original_checkout_unchanged": true
+}

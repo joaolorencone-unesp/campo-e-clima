@@ -1,0 +1,46 @@
+{
+  "base": "http://127.0.0.1:8776",
+  "checked_at_utc": "2026-10-29T05:04:50.338Z",
+  "cases": [
+    {
+      "mobile": false,
+      "tabs": [
+        "overview",
+        "agro",
+        "rain",
+        "observations",
+        "maps",
+        "wind",
+        "spray",
+        "precision",
+        "verification",
+        "extended",
+        "history-nasa"
+      ],
+      "js_errors": [],
+      "horizontal_overflow": false,
+      "precision_empty_state": "verified",
+      "locality_filter": "verified"
+    },
+    {
+      "mobile": true,
+      "tabs": [
+        "overview",
+        "agro",
+        "rain",
+        "observations",
+        "maps",
+        "wind",
+        "spray",
+        "precision",
+        "verification",
+        "extended",
+        "history-nasa"
+      ],
+      "js_errors": [],
+      "horizontal_overflow": false,
+      "precision_empty_state": "verified",
+      "locality_filter": "verified"
+    }
+  ]
+}

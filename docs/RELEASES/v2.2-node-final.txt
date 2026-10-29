@@ -1,0 +1,12 @@
+PASS: consulta determinística direta, atualização real e validação de fuso.
+PASS Central Agro v2.1: forward rain, missing data, coordinate validation, past-days labels, tech checklist and markup
+PASS custom coordinate ensembles: staged 7-day rain, partial model success, HTTP 429 stop, 4-day fallback, valid-only checks
+PASS v1.8: actual future 72 hours, forward precipitation timing, valid members, independent operational uncertainty.
+PASS v1.0: UTC history, daily series, NASA/ERA5 pairing, daytime meteorological screening, station distance.
+PASS coordinate bounds, NASA missingness, ensemble weighting, joint 2h spraying windows.
+PASS map v2.0 playback: timed steps, prefetch, independent source labels, UTC/local and dBZ legend
+PASS maps v1.4: 9-point forecast, labels, non-fabrication and wind transport directions.
+PASS precision v2.2: weighted period aggregation, missing pairs, circular bias. Synthetic fixtures only in test.
+PASS: exclusive bands, missing data, model agreement, UI thresholds, both collectors
+PASS v1.9: grouped alerts, official source display, observed radar manifest validation
+PASS v1.2: no fabricated rain, strict hourly/daily alignment, dynamic long-range with units.

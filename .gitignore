@@ -7,3 +7,13 @@ site/data/latest.json
 
 site/data/slow_sources_cache.json
 site/data/climate_cache.json
+
+runtime/
+weather-archive/
+.test_runs/
+*.sqlite*
+*.db*
+site/data/locations/
+site/data/*cache*
+site/data/inmet_stations.json
+site/data/history_navirai.json

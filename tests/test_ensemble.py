@@ -14,7 +14,7 @@ def test_weighted_quantile():
     assert weighted_quantile([(0,.75),(20,.25)], .9) == 20
 
 def test_missing_hour_excludes_member():
-    times = [f'2026-10-27T{h:02d}:00' for h in range(24)]
+    times = [f'2026-10-27T{h:02d}:00' for h in range(1,24)] + ['2026-10-28T00:00']
     vals = [0.1]*24
     damaged = [0.2]*24
     damaged[4] = None
@@ -48,7 +48,7 @@ def test_missing_gust_does_not_mean_zero():
 
 
 def test_rain_rejects_negative_and_nan():
-    times = [f'2026-10-27T{h:02d}:00' for h in range(24)]
+    times = [f'2026-10-27T{h:02d}:00' for h in range(1,24)] + ['2026-10-28T00:00']
     vals = [0.2]*24
     vals[1] = float('nan')
     assert model_daily_rain({'hourly':{'time':times,'precipitation_member01': vals}})['days']['2026-10-27']==[]

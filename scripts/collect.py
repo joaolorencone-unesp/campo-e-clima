@@ -128,12 +128,23 @@ def model_daily_rain(payload: dict) -> dict[str, Any]:
     if not raw:
         return {'member_count': 0, 'valid_member_count': 0, 'valid_members_by_day': {}, 'days': {}}
     by_date: dict[str, list[int]] = {}
+    first_day = times[0][:10] if times else ''
     for i, t in enumerate(times):
-        by_date.setdefault(t[:10], []).append(i)
+        try:
+            end = dt.datetime.fromisoformat(t)
+            day = (end - dt.timedelta(hours=1)).date().isoformat()
+        except (ValueError, TypeError):
+            continue
+        if day >= first_day:
+            by_date.setdefault(day, []).append(i)
     out = {}
     for day, ids in list(by_date.items())[:7]:
         if len(ids) != 24:
-            continue   # no daily sum for partial dates / unequal resolution
+            continue
+        end_stamps = [dt.datetime.fromisoformat(times[i]) for i in ids]
+        if (end_stamps[0].hour != 1 or end_stamps[-1].hour != 0 or
+            any(b-a != dt.timedelta(hours=1) for a,b in zip(end_stamps,end_stamps[1:]))):
+            continue  # local (00:00, next 00:00], not previous-day midnight rain
         sums = []
         for series in raw:
             if len(series) != len(times):
@@ -327,7 +338,7 @@ def rain_models_comparison(by_model: dict[str,dict]) -> list[dict]:
                            'p_gt_5_mm':round(sum(x>5 for x in members)/len(members),4)})
     return result
 
-def main():
+def main(include_local_sources=True):
     now_utc = dt.datetime.now(dt.timezone.utc)
     recorded = now_utc.isoformat()
     hourly_start = next_local_forecast_hour(now_utc)
@@ -437,93 +448,100 @@ def main():
     if not result['gust_ensemble_daily']:
         result['warnings'].append('No complete member/day gust sample; gust exceedance probabilities unavailable')
 
-    # Official observations/alerts are separate products, NOT extra model members.
-    # Errors only affect their own section, never conceal validated ensemble data.
-    result['official'] = collect_official()
-    provisional = pathlib.Path('data/observacoes/embrapa_exportacao_provisoria.csv')
-    result['embrapa_observations'] = load_export_provisional(provisional) if provisional.is_file() else load_optional(pathlib.Path(
-        os.environ.get('EMBRAPA_CSV', 'data/observacoes/embrapa_navirai.csv')))
-    # Independent comparator feeds. None counts as an additional Open-Meteo ensemble member.
-    # Slow-changing products can be cached across half-hourly GitHub Actions runs
-    # using actions/cache keyed by the local calendar day.
-    slow_cache=pathlib.Path('site/data/slow_sources_cache.json')
-    slow_day=dt.datetime.now(dt.timezone(dt.timedelta(hours=-4))).date().isoformat()
-    previous={}
-    if slow_cache.is_file():
-        try:
-            previous=json.loads(slow_cache.read_text(encoding='utf-8'))
-            if previous.get('cache_day')!=slow_day:previous={}
-        except (ValueError,OSError):previous={}
-    if previous:
-        slow_sources=previous.get('sources',{})
-    else:
-        slow_sources={
-          'nasa_power':collect_nasa_power(enabled=os.environ.get('NASA_POWER_ENABLE')=='1'),
-          'gefs_extended':collect_gefs_extended(enabled=os.environ.get('GEFS_EXTENDED_ENABLE')=='1'),
-          'previous_runs':collect_previous_runs(enabled=True)}
-        slow_cache.parent.mkdir(parents=True,exist_ok=True)
-        slow_cache.write_text(json.dumps({'cache_day':slow_day,'sources':slow_sources},ensure_ascii=False),encoding='utf-8')
-    # ECMWF EC46/SEAS5 changes much more slowly than hourly forecasts.
-    # One request per ISO week across scheduled executions; NO browser requests.
-    seasonal_cache=pathlib.Path('site/data/weekly_sources_cache.json')
-    weekly_key=f'{dt.datetime.now(dt.timezone(dt.timedelta(hours=-4))).isocalendar().year}-W{dt.datetime.now(dt.timezone(dt.timedelta(hours=-4))).isocalendar().week:02d}'
-    seasonal=None
-    if seasonal_cache.is_file():
-        try:
-            previous_seasonal=json.loads(seasonal_cache.read_text(encoding='utf-8'))
-            if previous_seasonal.get('cache_week')==weekly_key:seasonal=previous_seasonal.get('product')
-        except (ValueError,OSError):pass
-    if seasonal is None:
-        seasonal=collect_extended(enabled=os.environ.get('ECMWF_EXTENDED_ENABLE')=='1')
-        seasonal_cache.parent.mkdir(parents=True,exist_ok=True)
-        seasonal_cache.write_text(json.dumps({'cache_week':weekly_key,'product':seasonal},ensure_ascii=False),encoding='utf-8')
-    # Thirty-year ERA5-Land baseline refreshes once per local month, separately
-    # from the daily supplementary-product cache.
-    climate_cache=pathlib.Path('site/data/climate_cache.json')
-    climate_month=slow_day[:7]
-    climate=None
-    if climate_cache.is_file():
-        try:
-            old=json.loads(climate_cache.read_text(encoding='utf-8'))
-            if old.get('cache_month')==climate_month: climate=old.get('data')
-        except (ValueError,OSError):pass
-    if climate is None:
-        climate=collect_climate_era5(enabled=os.environ.get('CLIMATE_ERA5_ENABLE')=='1')
-        climate_cache.parent.mkdir(parents=True,exist_ok=True)
-        climate_cache.write_text(json.dumps({'cache_month':climate_month,'data':climate},ensure_ascii=False),encoding='utf-8')
-    result['historical_comparison'] = compare_export_provisional(
-        slow_sources.get('previous_runs',{}),result['embrapa_observations'])
-    result['complementary'] = {
-       'cptec': collect_cptec(),
-       'openweather': collect_openweather_free(),
-       'soil_forecast': collect_soil_forecast(),
-       'nasa_power': slow_sources.get('nasa_power',{'state':'requires_setup'}),
-       'ecmwf_extended':seasonal,
-       'gefs_extended':slow_sources.get('gefs_extended',{'state':'unavailable'}),
-       'previous_runs':slow_sources.get('previous_runs',{'state':'unavailable'}),
-       'era5_climatology':climate,
-       'goes_satellite': {'state':'requires_setup','source':'CPTEC/INPE DSAT GOES-19',
-          'source_url':'https://www.cptec.inpe.br/dsat/',
-          'note':'Visualizador oficial disponível. Integração de tiles e imagem automática exige validar licença, camada, atualização e cobertura; sem imagem sem timestamp.'},
-       'gpm_imerg':{'state':'requires_registration','source':'NASA GPM IMERG',
-          'source_url':'https://gpm.nasa.gov/data/imerg',
-          'note':'Acesso operacional a dados de precipitação exige cadastro Earthdata/PPS e tratamento de arquivos GeoTIFF/HDF5; não há leitura numérica nesta versão.'},
-       'soilgrids':{'state':'service_paused','source':'ISRIC SoilGrids',
-          'source_url':'https://docs.isric.org/globaldata/soilgrids/',
-          'note':'API REST suspensa; WCS, Earth Engine e WebDAV são alternativas a implementar para atributos estáticos.'},
-    }
-    for source_name,item in result['complementary'].items():
-        result['sources'][source_name]={'state':item.get('state'),
-            'source_url':item.get('source_url'),
-            'queried_at_utc':item.get('queried_at_utc')}
+    if include_local_sources:
+        # Official observations/alerts are separate products, NOT extra model members.
+        # Errors only affect their own section, never conceal validated ensemble data.
+        result['official'] = collect_official()
+        provisional = pathlib.Path('data/observacoes/embrapa_exportacao_provisoria.csv')
+        result['embrapa_observations'] = load_export_provisional(provisional) if provisional.is_file() else load_optional(pathlib.Path(
+            os.environ.get('EMBRAPA_CSV', 'data/observacoes/embrapa_navirai.csv')))
+        # Independent comparator feeds. None counts as an additional Open-Meteo ensemble member.
+        # Slow-changing products can be cached across half-hourly GitHub Actions runs
+        # using actions/cache keyed by the local calendar day.
+        slow_cache=pathlib.Path('site/data/slow_sources_cache.json')
+        slow_day=dt.datetime.now(dt.timezone(dt.timedelta(hours=-4))).date().isoformat()
+        previous={}
+        if slow_cache.is_file():
+            try:
+                previous=json.loads(slow_cache.read_text(encoding='utf-8'))
+                if previous.get('cache_day')!=slow_day:previous={}
+            except (ValueError,OSError):previous={}
+        if previous:
+            slow_sources=previous.get('sources',{})
+        else:
+            slow_sources={
+              'nasa_power':collect_nasa_power(enabled=os.environ.get('NASA_POWER_ENABLE')=='1'),
+              'gefs_extended':collect_gefs_extended(enabled=os.environ.get('GEFS_EXTENDED_ENABLE')=='1'),
+              'previous_runs':collect_previous_runs(enabled=True)}
+            slow_cache.parent.mkdir(parents=True,exist_ok=True)
+            slow_cache.write_text(json.dumps({'cache_day':slow_day,'sources':slow_sources},ensure_ascii=False),encoding='utf-8')
+        # ECMWF EC46/SEAS5 changes much more slowly than hourly forecasts.
+        # One request per ISO week across scheduled executions; NO browser requests.
+        seasonal_cache=pathlib.Path('site/data/weekly_sources_cache.json')
+        weekly_key=f'{dt.datetime.now(dt.timezone(dt.timedelta(hours=-4))).isocalendar().year}-W{dt.datetime.now(dt.timezone(dt.timedelta(hours=-4))).isocalendar().week:02d}'
+        seasonal=None
+        if seasonal_cache.is_file():
+            try:
+                previous_seasonal=json.loads(seasonal_cache.read_text(encoding='utf-8'))
+                if previous_seasonal.get('cache_week')==weekly_key:seasonal=previous_seasonal.get('product')
+            except (ValueError,OSError):pass
+        if seasonal is None:
+            seasonal=collect_extended(enabled=os.environ.get('ECMWF_EXTENDED_ENABLE')=='1')
+            seasonal_cache.parent.mkdir(parents=True,exist_ok=True)
+            seasonal_cache.write_text(json.dumps({'cache_week':weekly_key,'product':seasonal},ensure_ascii=False),encoding='utf-8')
+        # Thirty-year ERA5-Land baseline refreshes once per local month, separately
+        # from the daily supplementary-product cache.
+        climate_cache=pathlib.Path('site/data/climate_cache.json')
+        climate_month=slow_day[:7]
+        climate=None
+        if climate_cache.is_file():
+            try:
+                old=json.loads(climate_cache.read_text(encoding='utf-8'))
+                if old.get('cache_month')==climate_month: climate=old.get('data')
+            except (ValueError,OSError):pass
+        if climate is None:
+            climate=collect_climate_era5(enabled=os.environ.get('CLIMATE_ERA5_ENABLE')=='1')
+            climate_cache.parent.mkdir(parents=True,exist_ok=True)
+            climate_cache.write_text(json.dumps({'cache_month':climate_month,'data':climate},ensure_ascii=False),encoding='utf-8')
+        result['historical_comparison'] = compare_export_provisional(
+            slow_sources.get('previous_runs',{}),result['embrapa_observations'])
+        result['complementary'] = {
+           'cptec': collect_cptec(),
+           'openweather': collect_openweather_free(),
+           'soil_forecast': collect_soil_forecast(),
+           'nasa_power': slow_sources.get('nasa_power',{'state':'requires_setup'}),
+           'ecmwf_extended':seasonal,
+           'gefs_extended':slow_sources.get('gefs_extended',{'state':'unavailable'}),
+           'previous_runs':slow_sources.get('previous_runs',{'state':'unavailable'}),
+           'era5_climatology':climate,
+           'goes_satellite': {'state':'requires_setup','source':'CPTEC/INPE DSAT GOES-19',
+              'source_url':'https://www.cptec.inpe.br/dsat/',
+              'note':'Visualizador oficial disponível. Integração de tiles e imagem automática exige validar licença, camada, atualização e cobertura; sem imagem sem timestamp.'},
+           'gpm_imerg':{'state':'requires_registration','source':'NASA GPM IMERG',
+              'source_url':'https://gpm.nasa.gov/data/imerg',
+              'note':'Acesso operacional a dados de precipitação exige cadastro Earthdata/PPS e tratamento de arquivos GeoTIFF/HDF5; não há leitura numérica nesta versão.'},
+           'soilgrids':{'state':'service_paused','source':'ISRIC SoilGrids',
+              'source_url':'https://docs.isric.org/globaldata/soilgrids/',
+              'note':'API REST suspensa; WCS, Earth Engine e WebDAV são alternativas a implementar para atributos estáticos.'},
+        }
+        for source_name,item in result['complementary'].items():
+            result['sources'][source_name]={'state':item.get('state'),
+                'source_url':item.get('source_url'),
+                'queried_at_utc':item.get('queried_at_utc')}
 
-    for source_name, item in result['official'].items():
-        result['sources'][source_name] = {
-            'state':item['state'], 'source_url':item.get('source_url'),
-            'queried_at_utc':item.get('queried_at_utc')}
-    result['sources']['Embrapa Guia Clima'] = {
-        'state':result['embrapa_observations']['state'],
-        'source_url':result['embrapa_observations'].get('source_url')}
+        for source_name, item in result['official'].items():
+            result['sources'][source_name] = {
+                'state':item['state'], 'source_url':item.get('source_url'),
+                'queried_at_utc':item.get('queried_at_utc')}
+        result['sources']['Embrapa Guia Clima'] = {
+            'state':result['embrapa_observations']['state'],
+            'source_url':result['embrapa_observations'].get('source_url')}
+
+    else:
+        result['official'] = {}
+        result['embrapa_observations'] = {'state':'not_applicable','note':'Fonte de Naviraí não extrapolada'}
+        result['complementary'] = {}
+        result['historical_comparison'] = {'state':'not_applicable'}
 
     dest = pathlib.Path(os.environ.get('OUTPUT_JSON', 'site/data/latest.json'))
     dest.parent.mkdir(parents=True, exist_ok=True)

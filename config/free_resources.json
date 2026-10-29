@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "noncommercial_only": true,
+  "allow_paid": false,
+  "weather_max_equivalent_calls_per_day": 8000,
+  "archive_every_hours": 6,
+  "archive_max_bytes": 750000000,
+  "archive_max_bundle_bytes": 25000000,
+  "historical_max_days_per_request": 31,
+  "http_timeout_seconds": 35,
+  "http_max_attempts": 2,
+  "ai": {"provider": "none", "enable": false, "allow_paid": false, "max_calls_per_day": 2, "timeout_seconds": 30},
+  "locations": [
+    {"id":"navirai", "name":"Naviraí — MS", "latitude":-23.065, "longitude":-54.190, "timezone":"America/Campo_Grande", "public":true},
+    {"id":"diamantino", "name":"Diamantino — MT", "latitude":-14.408, "longitude":-56.446, "timezone":"America/Cuiaba", "public":true}
+  ]
+}

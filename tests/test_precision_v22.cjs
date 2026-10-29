@@ -1,0 +1,11 @@
+'use strict';
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const context={document:{readyState:'loading',addEventListener(){}},window:{},console,Date,Map,Math,Number};
+vm.runInNewContext(fs.readFileSync('site/static/precision_v22.js','utf8'),context);
+const aggregate=context.window.CampoPrecision._test.aggregate;
+const common={model:'test',horizon:'D1',lead_basis:'fixed_offset_24h',station_id:'synthetic',method:'M1'};
+const result=aggregate([{...common,n:2,metrics:{mae:1,rmse:2,bias:1,circular:false}},{...common,n:1,metrics:{mae:4,rmse:4,bias:-2,circular:false}}])[0];
+assert.equal(result.n,3);assert.equal(result.mae,2);assert.equal(result.rmse,Math.sqrt(8));assert.equal(result.bias,0);
+assert.equal(aggregate([]).length,0);
+assert.equal(aggregate([{...common,n:1,metrics:{mae:2,rmse:2,bias:2,circular:true,sine_error_sum:Math.sin(2*Math.PI/180),cosine_error_sum:Math.cos(2*Math.PI/180)}}])[0].bias,2);
+console.log('PASS precision v2.2: weighted period aggregation, missing pairs, circular bias. Synthetic fixtures only in test.');

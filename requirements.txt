@@ -1,3 +1,5 @@
 requests>=2.31,<3
 pytest>=8,<10
 beautifulsoup4>=4.12,<5
+pyarrow>=18,<27
+tzdata>=2025.1
