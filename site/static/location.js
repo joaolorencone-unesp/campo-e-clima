@@ -484,8 +484,8 @@ async function getElevation(point,token){
 }
 async function select(point){try{busy=false;sprayRunKey=null;sprayLastAttempt={key:null,at:0};const pair=validate(Number(point.latitude),Number(point.longitude));if(locEquals(pair,DEFAULT))return reset();const name=String(point.name||'Coordenadas personalizadas').trim().slice(0,62)||'Coordenadas personalizadas';applyPoint({...pair,timezone:'auto',name,custom:true});
  // Remove Naviraí forecast immediately on switching, even if API fails.
- state=null;document.querySelectorAll('.tab .plot').forEach(e=>{if(e.id)clearPlot(e.id,'Consultando dados para o novo ponto…');});
- document.querySelectorAll('.tab table').forEach(t=>{t.innerHTML='<tbody><tr><td>Aguardando dados válidos para as coordenadas selecionadas.</td></tr></tbody>';});
+ state=null;document.querySelectorAll('.tab:not(#precision) .plot').forEach(e=>{if(e.id)clearPlot(e.id,'Consultando dados para o novo ponto…');});
+ document.querySelectorAll('.tab:not(#precision) table').forEach(t=>{t.innerHTML='<tbody><tr><td>Aguardando dados válidos para as coordenadas selecionadas.</td></tr></tbody>';});
  $('status').textContent='Consultando o ponto selecionado. Os resultados anteriores de Naviraí foram removidos para evitar mistura de localidades.';
  $('nasa-summary').innerHTML='';setNasa('Consultando histórico NASA POWER para a coordenada…');
  $('metrics').innerHTML='';$('insights').textContent='Aguardando nova previsão específica da coordenada selecionada.';

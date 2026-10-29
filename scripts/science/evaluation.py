@@ -21,9 +21,14 @@ def horizon(row):
     if lead is None or lead<=0:return None,None
     return ('D'+str(max(1,int((lead-1e-8)//24)+1))),basis
 
-def paired_rows(db,*,max_distance_km=50):
+def paired_rows(db,*,max_distance_km=50,excluded_by_location=None):
     groups=collections.defaultdict(list)
     rejected=collections.Counter()
+    def reject(reason,loc):
+        rejected[reason]+=1
+        if excluded_by_location is not None:
+            group=excluded_by_location.setdefault(loc,{})
+            group[reason]=group.get(reason,0)+1
     with connect(db) as con:
         stations={r['id']:dict(r) for r in con.execute('SELECT * FROM observing_stations')}
         locations={r['id']:dict(r) for r in con.execute('SELECT * FROM locations')}
@@ -31,10 +36,10 @@ def paired_rows(db,*,max_distance_km=50):
         for r in con.execute('SELECT * FROM observations'):
             row=dict(r)
             if row['qc']!='valid' or row['reference_quality']!='observed_basic_qc':
-                rejected['reference_unverified_or_invalid']+=1;continue
+                reject('reference_unverified_or_invalid',row['location_id']);continue
             station=stations[row['station_id']]
             if haversine(locations[row['location_id']],station)>max_distance_km:
-                rejected['station_too_distant']+=1;continue
+                reject('station_too_distant',row['location_id']);continue
             refs[(row['location_id'],row['variable'],row['valid_at_utc'])].append(row)
         for table in ('forecast_values','ensemble_forecasts'):
             sql=f'''SELECT v.*,r.id AS canonical_run_id,r.location_id,r.model_id,r.product,r.available_at_utc,
@@ -44,13 +49,13 @@ def paired_rows(db,*,max_distance_km=50):
                 row=dict(data)
                 row['run_id']=row.pop('canonical_run_id')
                 if row['product'] in ('historical_forecast','reanalysis'):
-                    rejected['modelled_history_not_issued_forecast']+=1;continue
+                    reject('modelled_history_not_issued_forecast',row['location_id']);continue
                 h,basis=horizon(row)
                 if h is None:
-                    rejected['unknown_or_nonpositive_lead']+=1;continue
+                    reject('unknown_or_nonpositive_lead',row['location_id']);continue
                 if row['product']=='single_run':
                     # Initialization is not publication time. Exact historical availability unknown.
-                    rejected['single_run_availability_unverified']+=1;continue
+                    reject('single_run_availability_unverified',row['location_id']);continue
                 reference=refs.get((row['location_id'],row['variable'],row['valid_at_utc']),[])
                 bystation=collections.defaultdict(list)
                 for obs in reference:bystation[obs['station_id']].append(obs)
@@ -59,12 +64,12 @@ def paired_rows(db,*,max_distance_km=50):
                     comparable=[o for o in observations if o['unit']==row['unit'] and
                         o['interval_start_utc']==row['interval_start_utc'] and o['interval_end_utc']==row['interval_end_utc']]
                     if not comparable:
-                        rejected['interval_or_unit_mismatch']+=1;continue
+                        reject('interval_or_unit_mismatch',row['location_id']);continue
                     if len({o['value'] for o in comparable})!=1:
-                        rejected['conflicting_reference_versions']+=1;continue
-                    obs=comparable[0]
+                        reject('conflicting_reference_versions',row['location_id']);continue
+                    obs=min(comparable,key=lambda o:(o['available_at_utc'] or '9999',o['id']))
                     if haversine({'latitude':row['grid_latitude'],'longitude':row['grid_longitude']},stations[station])>75:
-                        rejected['grid_station_too_distant']+=1;continue
+                        reject('grid_station_too_distant',row['location_id']);continue
                     key=(row['location_id'],row['model_id'],row['variable'],h,basis,station,
                          row['run_id'],row['valid_at_utc'],table)
                     groups[key].append({**row,'observation':obs['value'],'station_id':station,
@@ -73,6 +78,7 @@ def paired_rows(db,*,max_distance_km=50):
     candidates={}
     for key,items in groups.items():
         loc,model,var,h,basis,station,run,valid,table=key
+        items.sort(key=lambda x:(x.get('member_id') or '',x['run_id']))
         samples=[x['value'] for x in items]
         prediction=sum(samples)/len(samples)
         if var=='wind_direction_10m':
@@ -102,10 +108,12 @@ def paired_rows(db,*,max_distance_km=50):
         rows.append({**items[0],'model_id':'MULTIMODEL_EQUAL','members':samples,'weights':weights,
             'prediction':prediction,
             'lineage_run_ids':sorted(r['run_id'] for r in items)})
+    rows.sort(key=lambda r:tuple(str(r.get(k,'')) for k in ('location_id','model_id','variable','horizon','station_id','valid_at_utc','method','run_id')))
     return rows,dict(rejected)
 
 def evaluate(db,output):
-    rows,rejected=paired_rows(db)
+    by_location={}
+    rows,rejected=paired_rows(db,excluded_by_location=by_location)
     grouped=collections.defaultdict(list)
     for row in rows:
         month=instant(row['valid_at_utc']).month
@@ -152,7 +160,7 @@ def evaluate(db,output):
                 'paired_values':n,'calibration_validated':False,'message':EMPTY_MESSAGE,
                 'state':'descriptive_pairs_available' if n else 'insufficient_verified_pairs'})
     report={'schema_version':1,'generated_at_utc':now(),'formula_version':FORMULA_VERSION,
-        'locations':status,'results':results,'excluded':rejected,'ai_provider':'none',
+        'locations':status,'results':results,'excluded':rejected,'excluded_by_location':by_location,'ai_provider':'none',
         'limitations':['Sem selo de calibração validada','Chuva horária pode ser interpolada pelo provedor',
                        'Inicialização e disponibilidade histórica são conceitos distintos',
                        'Resultados brutos descritivos não constituem teste independente de um calibrador']}

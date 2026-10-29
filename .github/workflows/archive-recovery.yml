@@ -1,0 +1,51 @@
+name: Recover scientific capture explicitly
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: 'ID of the main Pages/science run whose capture must be recovered (7 days)'
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: weather-archive-writer
+  cancel-in-progress: false
+  queue: max
+jobs:
+  recover:
+    if: github.ref == 'refs/heads/main' && github.event.repository.private == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements-science.txt
+      - name: Locate unexpired artifact from a trusted main run
+        id: locate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+        run: python -m scripts.archive_transport locate --run-id "$SOURCE_RUN_ID"
+      - uses: actions/download-artifact@v4
+        if: steps.locate.outputs.artifact_name != ''
+        with:
+          name: ${{ steps.locate.outputs.artifact_name }}
+          path: runtime/recovery
+          run-id: ${{ inputs.source_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Recover without overwriting a six-hour slot or existing history
+        if: steps.locate.outputs.artifact_name != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AI_PROVIDER: none
+          AI_ENABLE: '0'
+        run: python -m scripts.archive_git --captures runtime/recovery --push
+      - name: Report missing artifact without changing scientific records
+        if: steps.locate.outputs.artifact_name == ''
+        run: echo '::warning::Artifact absent or expired. Permanent archive was not changed; use a verified local backup.'

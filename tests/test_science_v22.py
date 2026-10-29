@@ -264,7 +264,7 @@ def test_workflows_keep_main_deployment_and_separate_archive_writer():
     pages=(root/'.github/workflows/pages.yml').read_text(encoding='utf-8')
     writer=(root/'scripts/archive_git.py').read_text(encoding='utf-8')
     assert "7,37 * * * *" in pages and 'actions/deploy-pages@v4' in pages
-    assert 'weather-archive-writer' in pages and 'retention-days: 1' in pages
+    assert 'weather-archive-writer' in pages and 'retention-days: 7' in pages
     assert "BRANCH='weather-archive'" in writer and "'--force'" not in writer
 
 def test_ensemble_direction_uses_circular_mean(tmp_path):

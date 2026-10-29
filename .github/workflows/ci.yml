@@ -1,0 +1,40 @@
+name: Offline integration checks
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: ['feature/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        python: ['3.11', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: pip install -r requirements-science.txt
+      - name: Python scientific and operational tests without external HTTP
+        env:
+          CAMPO_OFFLINE_TESTS: '1'
+          AI_PROVIDER: none
+          AI_ENABLE: '0'
+        run: python -m pytest -q
+      - name: All offline JavaScript suites
+        run: |
+          for test in tests/frontend_smoke.cjs tests/test_*.cjs; do node "$test"; done
+          for source in site/static/*.js; do node --check "$source"; done

@@ -64,6 +64,11 @@ def archive_capture(capture_dir, archive_root, *, force_slot=None):
     existing=sum(p.stat().st_size for p in archive_root.rglob('*') if p.is_file() and '.git' not in p.parts) if archive_root.exists() else 0
     new_size=sum((capture_dir/x).stat().st_size for x in unique if not (archive_root/x).exists())
     limits=config()
+    if (archive_root/'.git').exists():
+        from .storage import inventory
+        storage=inventory(archive_root,limits=limits)
+        if storage['git_object_bytes'] is not None and storage['git_object_bytes']>=storage['git_limit_bytes']:
+            raise ValueError('Limite Git atingido; preservar captura e preparar rotação aprovada')
     if size>limits['archive_max_bundle_bytes'] or existing+new_size+len(packed(manifest))>limits['archive_max_bytes']:
         raise ValueError('Limite conservador de armazenamento; migração gratuita precisa ser planejada')
     for rel,entry in unique.items():

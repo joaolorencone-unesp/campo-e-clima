@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.2.0 — revisão de integração GitHub, 29/10/2026
+
+- Recuperação das duas branches por bundles no repositório original, preservando main e a entrega anterior.
+- CI de PR offline, permissões por job, fila de escritores, transporte seletivo e recuperação explícita de artifacts.
+- Falhas de relatórios preservam RAW e relatórios anteriores; exportação pública usa um único commit do arquivo.
+- Alertas de armazenamento em 50/70/85/95%, limites conservadores e volumes mensais verificáveis, sem exclusão automática.
+- Correção da troca global de localidade na aba Precisão; coordenadas desconhecidas limpam resultados anteriores e exclusões são locais.
+- Pareamento e hashes de datasets determinísticos, intervalo real de purga registrado e timestamp da coleta determinística preservado.
+- Reconstrução real, comparação integral do SQLite, backup/restauração e validação visual; evidências em `RELEASES/V22_GITHUB_INTEGRATION.md`.
+- Nenhuma publicação remota ou promoção de calibrador; observações e pares elegíveis continuam em zero.
+
 ## 2.2.0 — candidato local, 29/10/2026
 
 - Auditoria da v2.1 no commit e1241e2; branch de desenvolvimento sem upstream para main.

@@ -8,10 +8,12 @@ from .database import connect
 from .evaluation import paired_rows, EMPTY_MESSAGE
 from .metrics import deterministic, brier_score, brier_skill_score, monotone_probabilities
 
+def purge_days(rows):
+    leads=[r.get("lead_hours") or ((instant(r["valid_at_utc"])-instant(r["available_at_utc"])).total_seconds()/3600 if r.get("available_at_utc") else 0) for r in rows]
+    return max(7,math.ceil(max(leads,default=0)/24))
+
 def chronological_split(rows, *, gap_days=None):
-    if gap_days is None:
-        leads=[r.get("lead_hours") or ((instant(r["valid_at_utc"])-instant(r["available_at_utc"])).total_seconds()/3600 if r.get("available_at_utc") else 0) for r in rows]
-        gap_days=max(7,math.ceil(max(leads,default=0)/24))
+    if gap_days is None:gap_days=purge_days(rows)
     dates=sorted({r['valid_at_utc'] for r in rows})
     if len(dates)<30:raise ValueError('Datas insuficientes para três blocos temporais')
     a=instant(dates[int(len(dates)*.6)]);b=instant(dates[int(len(dates)*.8)])
@@ -51,7 +53,7 @@ def experiment(db, output):
         from sklearn.isotonic import IsotonicRegression
         x=lambda block:np.array([[r['prediction']] for r in block])
         y=lambda block:np.array([r['observation'] for r in block])
-        dataset=digest(packed(sample)); split={'train':len(train),'calibration':len(cal),'test':len(test),'gap_days':7,
+        dataset=digest(packed(sample)); split={'train':len(train),'calibration':len(cal),'test':len(test),'gap_days':purge_days(sample),
             'start_test':min(r['valid_at_utc'] for r in test),'end_test':max(r['valid_at_utc'] for r in test),'feature_version':'prediction_only_v1','data_sha256':dataset}
         evaluations=[]
         if key[2]=='precipitation':

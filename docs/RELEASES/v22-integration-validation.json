@@ -1,0 +1,38 @@
+{
+  "checked_at_utc": "2026-10-29T18:34:53.007060+00:00",
+  "python": "3.13.4 (tags/v3.13.4:8a526ec, Jun  3 2025, 17:46:04) [MSC v.1943 64 bit (AMD64)]",
+  "node": "v24.22.1",
+  "pytest": "........................................................................ [ 47%]\n........................................................................ [ 94%]\n........                                                                 [100%]\n152 passed in 11.81s",
+  "pytest_version": "9.2.0",
+  "pyarrow": "26.0.0",
+  "javascript_suites": [
+    "frontend_smoke.cjs",
+    "test_agro_cockpit_v21.cjs",
+    "test_custom_ensemble_v15.cjs",
+    "test_forward_browser_v18.cjs",
+    "test_history_v10.cjs",
+    "test_location_client.cjs",
+    "test_maps_controls_v20.cjs",
+    "test_maps_v14.cjs",
+    "test_precision_v22.cjs",
+    "test_rain_scenarios_v16.cjs",
+    "test_ux_v19.cjs",
+    "test_v12_browser.cjs"
+  ],
+  "static_js_syntax_files": 11,
+  "python_ast_files": 62,
+  "offline_http_guard": true,
+  "actionlint": {
+    "version": "1.7.12",
+    "exit_code": 0,
+    "workflows": 4,
+    "exception": "Only queue:max parser warning ignored; supported by current GitHub documentation. ShellCheck/Pyflakes not installed."
+  },
+  "browser_reports": [
+    "v2.2-browser.json",
+    "v22-integration-browser.json"
+  ],
+  "database_report": "v22-integration-database.json",
+  "remote_changes": false,
+  "new_actions_executed_remotely": false
+}

@@ -3,6 +3,12 @@ const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/st
 const context={document:{readyState:'loading',addEventListener(){}},window:{},console,Date,Map,Math,Number};
 vm.runInNewContext(fs.readFileSync('site/static/precision_v22.js','utf8'),context);
 const aggregate=context.window.CampoPrecision._test.aggregate;
+const identify=context.window.CampoPrecision._test.identify;
+assert.equal(identify({latitude:-23.065,longitude:-54.190}),'navirai');
+assert.equal(identify({latitude:-14.408,longitude:-56.446}),'diamantino');
+assert.equal(identify({latitude:-20,longitude:-50}),'unknown');
+assert.equal(identify({latitude:-23.065,longitude:-56.446}),'unknown');
+assert.equal(identify({latitude:null,longitude:null}),'unknown');
 const common={model:'test',horizon:'D1',lead_basis:'fixed_offset_24h',station_id:'synthetic',method:'M1'};
 const result=aggregate([{...common,n:2,metrics:{mae:1,rmse:2,bias:1,circular:false}},{...common,n:1,metrics:{mae:4,rmse:4,bias:-2,circular:false}}])[0];
 assert.equal(result.n,3);assert.equal(result.mae,2);assert.equal(result.rmse,Math.sqrt(8));assert.equal(result.bias,0);

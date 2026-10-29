@@ -13,6 +13,8 @@ weather-archive/
 .test_runs/
 *.sqlite*
 *.db*
+*.bundle
+*.zip
 site/data/locations/
 site/data/*cache*
 site/data/inmet_stations.json

@@ -1,0 +1,126 @@
+{
+  "checked_at_utc": "2026-10-29T18:35:19.298214+00:00",
+  "manifests_reingested": 8,
+  "all_table_hashes_and_counts_unchanged": true,
+  "exact_duplicate_rows_by_table": {
+    "ai_explanations": 0,
+    "calibration_datasets": 0,
+    "calibration_models": 0,
+    "calibration_predictions": 0,
+    "data_quality_flags": 0,
+    "ensemble_forecasts": 0,
+    "ensemble_members": 0,
+    "forecast_run_keys": 0,
+    "forecast_runs": 0,
+    "forecast_values": 0,
+    "forecast_verifications": 0,
+    "locations": 0,
+    "model_evaluations": 0,
+    "model_versions": 0,
+    "observations": 0,
+    "observing_stations": 0,
+    "pipeline_executions": 0,
+    "raw_assets": 0,
+    "reanalysis_values": 0,
+    "schema_migrations": 0,
+    "system_versions": 0,
+    "weather_models": 0,
+    "weather_sources": 0
+  },
+  "integrity": "ok",
+  "foreign_key_violations": 0,
+  "table_signatures": {
+    "ai_explanations": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "calibration_datasets": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "calibration_models": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "calibration_predictions": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "data_quality_flags": {
+      "rows": 6,
+      "sha256": "f06466d4e98637e9f771b9f0e874a809176bc731cbbc1a3461ef3154043ac268"
+    },
+    "ensemble_forecasts": {
+      "rows": 487968,
+      "sha256": "095f99e0f670329aaacf2f28e1d5d459382599135b5c9354133f332dffaafb85"
+    },
+    "ensemble_members": {
+      "rows": 299,
+      "sha256": "54fd49c90b263d0f2e01af474c091569bb12eb21d9eb9f8f97ae59204501ed04"
+    },
+    "forecast_run_keys": {
+      "rows": 40,
+      "sha256": "b5c655446a3dcacd8212be7391d0e1a9929b46aaf25dbf89b54beb76c8424c74"
+    },
+    "forecast_runs": {
+      "rows": 40,
+      "sha256": "55e3a60604a45247a104b3613dea7846bc01144f6660bb13a77760dd21710ace"
+    },
+    "forecast_values": {
+      "rows": 27888,
+      "sha256": "65f9a703ed86fcea4d69aedce1f9748d8f6119e6a01f7eac945984da5c996a4d"
+    },
+    "forecast_verifications": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "locations": {
+      "rows": 2,
+      "sha256": "6519f0fb8618dca6d2888ae54935152aa694095fd32aaf596bc8e1dc4f667264"
+    },
+    "model_evaluations": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "model_versions": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "observations": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "observing_stations": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "pipeline_executions": {
+      "rows": 8,
+      "sha256": "fe7299f096f86868da7417fcab044fcf01907df831ea0a1c88a0ddc4d94043cf"
+    },
+    "raw_assets": {
+      "rows": 46,
+      "sha256": "55725e31115c93fc093adf57096cec08e682838a3fa58bfb72e07b0348738a27"
+    },
+    "reanalysis_values": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "schema_migrations": {
+      "rows": 2,
+      "sha256": "7b89d655e9a871806f32c9fc03675cbc61babf2d7c4ad537aeba042505a6ee4a"
+    },
+    "system_versions": {
+      "rows": 1,
+      "sha256": "4aa430ffc7b92e61dfb470e03eb9e2b1adc37f2ea7aa528dfa68a556815a9813"
+    },
+    "weather_models": {
+      "rows": 10,
+      "sha256": "e6e1c72d8b96a019affb77f8de4e4f597f2ec70e10af949bc8bde86549efe3f4"
+    },
+    "weather_sources": {
+      "rows": 1,
+      "sha256": "dd0a34e6fc33d584d3bd5ec8dc1ae93c7195963f5b97cd0f9d1031c063274852"
+    }
+  }
+}

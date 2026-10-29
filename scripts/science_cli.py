@@ -38,8 +38,9 @@ def collect(location_id, runtime, *, database=None):
         # Cache hits retain the actual acquisition time, never the current UI refresh time.
         for event in cap.manifest['requests']:
             if event.get('http_status')!=200:continue
-            if 'ensemble-api.' not in event['source_url'] and public.get('deterministic'):
+            if event['source_url']=='https://api.open-meteo.com/v1/forecast' and not event['params'].get('models') and event.get('product')=='operational' and public.get('deterministic'):
                 public['deterministic']['collected_at_utc']=event['collected_at_utc']
+                public['sources']['Open-Meteo Forecast']['collected_at_utc']=event['collected_at_utc']
             for model in public.get('ensemble_models',{}).values():
                 if model.get('code')==event['params'].get('models'):
                     model['collected_at_utc']=event['collected_at_utc']

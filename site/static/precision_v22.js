@@ -4,6 +4,9 @@
  const $=id=>document.getElementById(id), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const fmt=x=>typeof x==='number'&&Number.isFinite(x)?x.toLocaleString('pt-BR',{maximumFractionDigits:3}):'—';
  const empty='Histórico de previsões em construção. Ainda não há amostras suficientes para validar uma calibração local.';
+ const unknown='Não há histórico científico validado para esta localidade.';
+ const locations=[['navirai',-23.065,-54.190],['diamantino',-14.408,-56.446]];
+ function identify(p){return locations.find(([,lat,lon])=>Number.isFinite(p?.latitude)&&Number.isFinite(p?.longitude)&&Math.abs(p.latitude-lat)<1e-5&&Math.abs(p.longitude-lon)<1e-5)?.[0]||'unknown';}
  let report=null,pending=null,experiments=null;
  function aggregate(rows){
   const map=new Map();
@@ -29,9 +32,19 @@
  }
  function messagePlot(id,text){if(window.Plotly)try{Plotly.purge($(id));}catch(_){}$(id).textContent=text;}
  function render(){
+  const selected=$('precision-location').value;
+  if(selected==='unknown'){
+   $('precision-status').textContent=unknown;$('precision-provenance').textContent='Nenhum resultado de Naviraí ou Diamantino foi aplicado às coordenadas selecionadas.';
+   $('precision-kpis').innerHTML='';$('precision-table-body').innerHTML='<tr><td colspan="8">'+unknown+'</td></tr>';
+   $('precision-model').innerHTML='<option value="all">Todos os modelos</option>';$('precision-calibration').textContent=unknown;$('precision-exclusions').textContent=unknown;
+   messagePlot('precision-bias',unknown);messagePlot('precision-reliability',unknown);return;
+  }
   if(!report)return;
-  const loc=report.locations.find(l=>l.id===$('precision-location').value);if(!loc)return;
-  const rows=aggregate(filtered()),n=rows.reduce((s,r)=>s+r.n,0);
+  const loc=report.locations.find(l=>l.id===selected&&identify(l)===selected);
+  if(!loc){$('precision-location').value='unknown';render();return;}
+  const rows=aggregate(filtered()),chosenModel=$('precision-model').value;
+  const activeModel=rows.some(r=>r.model===chosenModel)?chosenModel:'all';
+  const n=rows.filter(r=>activeModel==='all'||r.model===activeModel).reduce((s,r)=>s+r.n,0);
   $('precision-status').textContent=n?'Há pares para comparação descritiva. Nenhum calibrador foi promovido à previsão principal.':empty;
   $('precision-provenance').textContent=`${loc.name} • ${loc.latitude}, ${loc.longitude} • ${loc.timezone}. Relatório de ${new Date(report.generated_at_utc).toLocaleString('pt-BR',{timeZone:loc.timezone})}. Período dos filtros: dias UTC. Critério de referência: estação identificada com controle básico de qualidade. A contagem abaixo informa se há registros elegíveis; representatividade local requer revisão.`;
   const cards=[['Produtos arquivados',loc.forecast_runs],['Valores observados com QC básico',loc.observation_values_basic_qc],['Pares no filtro',n],['Calibração local validada','Não']];
@@ -42,7 +55,7 @@
   if(options.includes(chosen))$('precision-model').value=chosen;
   const visible=rows.filter(r=>$('precision-model').value==='all'||r.model===$('precision-model').value);
   $('precision-table-body').innerHTML=visible.length?visible.map(r=>`<tr><td>${esc(r.model)}<br><small>${esc(r.method)} • bruto</small></td><td>${esc(r.horizon)}<br><small>${esc(r.lead_basis)}</small></td><td>${esc(r.station_id)}</td><td>${r.n}</td><td>${fmt(r.mae)}</td><td>${fmt(r.rmse)}</td><td>${fmt(r.bias)}</td><td>${esc(r.unit)}</td></tr>`).join(''):'<tr><td colspan="8">Sem pares elegíveis no período e variável selecionados.</td></tr>';
-  $('precision-exclusions').textContent=Object.entries(report.excluded||{}).map(([why,count])=>`${({modelled_history_not_issued_forecast:'Histórico modelado sem emissão individual',single_run_availability_unverified:'Rodada sem horário de disponibilidade comprovado',unknown_or_nonpositive_lead:'Antecedência desconhecida ou não futura',reference_unverified_or_invalid:'Referência provisória ou inválida',station_too_distant:'Estação fora da distância aceita',grid_station_too_distant:'Grade distante da estação',interval_or_unit_mismatch:'Intervalos ou unidades incompatíveis',conflicting_reference_versions:'Versões conflitantes da observação'})[why]||'Outras exclusões'}: ${count}`).join(' · ')||'Ainda não há pares para examinar. As ausências não são transformadas em zero.';
+  $('precision-exclusions').textContent=Object.entries(report.excluded_by_location?.[loc.id]||{}).map(([why,count])=>`${({modelled_history_not_issued_forecast:'Histórico modelado sem emissão individual',single_run_availability_unverified:'Rodada sem horário de disponibilidade comprovado',unknown_or_nonpositive_lead:'Antecedência desconhecida ou não futura',reference_unverified_or_invalid:'Referência provisória ou inválida',station_too_distant:'Estação fora da distância aceita',grid_station_too_distant:'Grade distante da estação',interval_or_unit_mismatch:'Intervalos ou unidades incompatíveis',conflicting_reference_versions:'Versões conflitantes da observação'})[why]||'Outras exclusões'}: ${count}`).join(' · ')||'Sem diagnóstico de exclusões específico para esta localidade neste relatório. As ausências não são transformadas em zero.';
   const experimental=(experiments?.experiments||[]).filter(x=>x.status==='experimental_test_only'&&x.group[0]===loc.id&&x.group[2]===$('precision-variable').value&&(!$('precision-start').value||x.split.start_test.slice(0,10)>=$('precision-start').value)&&(!$('precision-end').value||x.split.end_test.slice(0,10)<=$('precision-end').value));
   $('precision-calibration').innerHTML=experimental.length?'<div class="scroll"><table><thead><tr><th>Modelo / horizonte</th><th>Método</th><th>Teste temporal (n)</th><th>MAE / RMSE</th><th>Brier / limiar</th></tr></thead><tbody>'+experimental.flatMap(x=>x.evaluations.map(e=>`<tr><td>${esc(x.group[1])} • ${esc(x.group[3])}</td><td>${esc(e.method)}</td><td>${x.split.test}</td><td>${fmt(e.metrics?.mae)} / ${fmt(e.metrics?.rmse)}</td><td>${fmt(e.brier)} / ${fmt(e.threshold)}</td></tr>`)).join('')+'</tbody></table></div>':'<p class="caption">Nenhum calibrador foi avaliado com amostra suficiente para esta seleção. Não há ganho de precisão demonstrado.</p>';
   if(!visible.length||!window.Plotly){messagePlot('precision-bias','Viés disponível após a formação de pares válidos.');messagePlot('precision-reliability','Confiabilidade disponível após observar os eventos de chuva.');return;}
@@ -64,8 +77,9 @@
   if(!$('precision-status'))return;
   ['location','variable','start','end','model','threshold'].forEach(k=>$('precision-'+k).addEventListener('change',render));
   $('tabs').addEventListener('click',e=>{if(e.target.closest('button[data-tab="precision"]'))void load();});
-  window.addEventListener('campo:location-changed',e=>{const p=e.detail;const known=[['navirai',-23.065,-54.190],['diamantino',-14.408,-56.446]].find(([,lat,lon])=>Math.abs(p.latitude-lat)<1e-5&&Math.abs(p.longitude-lon)<1e-5);if(known){$('precision-location').value=known[0];render();}});
+  window.addEventListener('campo:location-changed',e=>{$('precision-location').value=identify(e.detail);render();});
+  if(window.CampoLocation?.getPoint){$('precision-location').value=identify(window.CampoLocation.getPoint());render();}
  }
- window.CampoPrecision={load,render,_test:{aggregate}};
+ window.CampoPrecision={load,render,_test:{aggregate,identify}};
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })();

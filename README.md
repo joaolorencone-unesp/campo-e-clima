@@ -2,6 +2,8 @@
 
 Desenvolvimento sobre a v2.1 existente, commit de origem `e1241e2`. A branch `feature/v2.2-ciencia-e-rastreabilidade` contém o código para revisão; main não foi alterada.
 
+Revisão de integração de 29/10/2026: [estado Git, evidências, publicação e rollback](docs/RELEASES/V22_GITHUB_INTEGRATION.md) e [rascunho local do PR](docs/RELEASES/V22_PR_DRAFT.md). As branches foram recuperadas por Git no repositório original. Publicação, abertura do PR e merge aguardam autorização; instruções antigas de copiar ZIP não se aplicam a esta recuperação.
+
 - Arquivo RAW por SHA-256, SQLite reconstruível, Parquet e scripts de recuperação.
 - Naviraí e Diamantino separados; membros dos oito ensembles preservados quando retornam.
 - Previous Runs, Single Runs e Historical Forecast com identidades metodológicas diferentes.
