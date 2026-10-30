@@ -1,0 +1,9 @@
+{
+  "version": "1.7.12",
+  "exit_code": 0,
+  "diagnostics": "",
+  "suppressed_parser_diagnostic": "unexpected key \"queue\" for \"concurrency\" section",
+  "extra_known_runner_label": "ubuntu-26.04",
+  "shellcheck_executed": false,
+  "pyflakes_executed": false
+}

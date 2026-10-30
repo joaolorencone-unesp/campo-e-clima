@@ -1,0 +1,67 @@
+[
+  {
+    "test": "frontend_smoke.cjs",
+    "output": "PASS: consulta determinística direta, atualização real e validação de fuso.",
+    "exit_code": 0
+  },
+  {
+    "test": "test_agro_cockpit_v21.cjs",
+    "output": "PASS Central Agro v2.1: forward rain, missing data, coordinate validation, past-days labels, tech checklist and markup",
+    "exit_code": 0
+  },
+  {
+    "test": "test_custom_ensemble_v15.cjs",
+    "output": "PASS custom coordinate ensembles: staged 7-day rain, partial model success, HTTP 429 stop, 4-day fallback, valid-only checks",
+    "exit_code": 0
+  },
+  {
+    "test": "test_forward_browser_v18.cjs",
+    "output": "PASS v1.8: actual future 72 hours, forward precipitation timing, valid members, independent operational uncertainty.",
+    "exit_code": 0
+  },
+  {
+    "test": "test_freshness_v22.cjs",
+    "output": "PASS: ensemble age follows acquisition, not publication; missing timestamp remains unknown.",
+    "exit_code": 0
+  },
+  {
+    "test": "test_history_v10.cjs",
+    "output": "PASS v1.0: UTC history, daily series, NASA/ERA5 pairing, daytime meteorological screening, station distance.",
+    "exit_code": 0
+  },
+  {
+    "test": "test_location_client.cjs",
+    "output": "PASS coordinate bounds, NASA missingness, ensemble weighting, joint 2h spraying windows.",
+    "exit_code": 0
+  },
+  {
+    "test": "test_maps_controls_v20.cjs",
+    "output": "PASS map v2.0 playback: timed steps, prefetch, independent source labels, UTC/local and dBZ legend",
+    "exit_code": 0
+  },
+  {
+    "test": "test_maps_v14.cjs",
+    "output": "PASS maps v1.4: 9-point forecast, labels, non-fabrication and wind transport directions.",
+    "exit_code": 0
+  },
+  {
+    "test": "test_precision_v22.cjs",
+    "output": "PASS precision v2.2: weighted period aggregation, missing pairs, circular bias. Synthetic fixtures only in test.",
+    "exit_code": 0
+  },
+  {
+    "test": "test_rain_scenarios_v16.cjs",
+    "output": "PASS: exclusive bands, missing data, model agreement, UI thresholds, both collectors",
+    "exit_code": 0
+  },
+  {
+    "test": "test_ux_v19.cjs",
+    "output": "PASS v1.9: grouped alerts, official source display, observed radar manifest validation",
+    "exit_code": 0
+  },
+  {
+    "test": "test_v12_browser.cjs",
+    "output": "PASS v1.2: no fabricated rain, strict hourly/daily alignment, dynamic long-range with units.",
+    "exit_code": 0
+  }
+]

@@ -15,9 +15,11 @@ from typing import Any
 import requests
 try:
     from scripts.sources.gefs_extended import collect_gefs_extended
+    from scripts.sources.cache_policy import refresh_daily
     from scripts.spraying import read_joint_members, mix_joint_hourly, mix_joint_windows2h
 except ModuleNotFoundError:  # CLI invocation: python scripts/collect.py
     from sources.gefs_extended import collect_gefs_extended
+    from sources.cache_policy import refresh_daily
     from spraying import read_joint_members, mix_joint_hourly, mix_joint_windows2h
 try:
     from scripts.sources.free_research import collect_climate_era5, collect_previous_runs, compare_export_provisional, collect_openweather_free
@@ -70,7 +72,19 @@ def forecast() -> dict:
               'daily': ','.join(['temperature_2m_max','temperature_2m_min','precipitation_sum',
                                   'precipitation_probability_max','wind_gusts_10m_max']),
               'current': ','.join(['temperature_2m','relative_humidity_2m','precipitation','wind_speed_10m','wind_direction_10m'])}
-    return fetch(FORECAST_URL, params)
+    payload=fetch(FORECAST_URL, params)
+    validate_forecast(payload)
+    return payload
+
+
+def validate_forecast(payload):
+    if not isinstance(payload,dict) or payload.get('utc_offset_seconds')!=-14400:
+        raise ValueError('Fuso ou resposta de previsão incompatível')
+    hourly=payload.get('hourly') or {};times=hourly.get('time') or []
+    if not times or not any(isinstance(series,list) and len(series)==len(times) and
+        any(isinstance(v,(int,float)) and not isinstance(v,bool) and math.isfinite(v) for v in series)
+        for key,series in hourly.items() if key!='time'):
+        raise ValueError('Previsão sem valores horários válidos; não publicar atualização vazia')
 
 
 def get_members(payload: dict, base: str) -> list[list[float | None]]:
@@ -466,15 +480,12 @@ def main(include_local_sources=True):
                 previous=json.loads(slow_cache.read_text(encoding='utf-8'))
                 if previous.get('cache_day')!=slow_day:previous={}
             except (ValueError,OSError):previous={}
-        if previous:
-            slow_sources=previous.get('sources',{})
-        else:
-            slow_sources={
-              'nasa_power':collect_nasa_power(enabled=os.environ.get('NASA_POWER_ENABLE')=='1'),
-              'gefs_extended':collect_gefs_extended(enabled=os.environ.get('GEFS_EXTENDED_ENABLE')=='1'),
-              'previous_runs':collect_previous_runs(enabled=True)}
-            slow_cache.parent.mkdir(parents=True,exist_ok=True)
-            slow_cache.write_text(json.dumps({'cache_day':slow_day,'sources':slow_sources},ensure_ascii=False),encoding='utf-8')
+        slow_sources=refresh_daily(previous,{
+            'nasa_power':lambda:collect_nasa_power(enabled=os.environ.get('NASA_POWER_ENABLE')=='1'),
+            'gefs_extended':lambda:collect_gefs_extended(enabled=os.environ.get('GEFS_EXTENDED_ENABLE')=='1',fetcher=fetch),
+            'previous_runs':lambda:collect_previous_runs(enabled=True)})
+        slow_cache.parent.mkdir(parents=True,exist_ok=True)
+        slow_cache.write_text(json.dumps({'cache_day':slow_day,'sources':slow_sources},ensure_ascii=False),encoding='utf-8')
         # ECMWF EC46/SEAS5 changes much more slowly than hourly forecasts.
         # One request per ISO week across scheduled executions; NO browser requests.
         seasonal_cache=pathlib.Path('site/data/weekly_sources_cache.json')

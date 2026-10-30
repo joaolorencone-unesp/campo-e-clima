@@ -263,7 +263,7 @@ def test_workflows_keep_main_deployment_and_separate_archive_writer():
     root=Path(__file__).resolve().parents[1]
     pages=(root/'.github/workflows/pages.yml').read_text(encoding='utf-8')
     writer=(root/'scripts/archive_git.py').read_text(encoding='utf-8')
-    assert "7,37 * * * *" in pages and 'actions/deploy-pages@v4' in pages
+    assert "7,37 * * * *" in pages and 'actions/deploy-pages@' in pages
     assert 'weather-archive-writer' in pages and 'retention-days: 7' in pages
     assert "BRANCH='weather-archive'" in writer and "'--force'" not in writer
 

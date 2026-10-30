@@ -43,7 +43,7 @@ def archive_capture(capture_dir, archive_root, *, force_slot=None):
     loc=location(manifest['location']['id'])
     if manifest['location']!=loc or not loc['public']:
         raise ValueError('Somente localidades públicas cadastradas podem ser arquivadas')
-    if not any(x.get('http_status')==200 and x.get('raw_sha256') and x.get('product')!='official_response' for x in manifest['requests']):
+    if not any(x.get('http_status')==200 and x.get('raw_sha256') and x.get('payload_valid',True) and x.get('product')!='official_response' for x in manifest['requests']):
         raise ValueError('Nenhum produto HTTP válido; janela não será consumida')
     stamp=instant(manifest['collected_at_utc'])
     slot=stamp.replace(hour=stamp.hour//6*6,minute=0,second=0,microsecond=0)

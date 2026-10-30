@@ -1,0 +1,13 @@
+{
+  "refs_before": {
+    "HEAD": "bcdde96514bb4731ce3f32cbde0366a79a624cdf",
+    "main": "e1241e208033baf3260d86c8ba4b03e56ba92300",
+    "weather-archive": "4bb516702e78cdf699ae00577d3a12d1417e74a6",
+    "origin/main": "e1241e208033baf3260d86c8ba4b03e56ba92300",
+    "origin/feature/v2.2-ciencia-e-rastreabilidade": "bcdde96514bb4731ce3f32cbde0366a79a624cdf"
+  },
+  "protected_files": 286,
+  "previous_package_files_verified": 76,
+  "method": "SHA-256 inventory of official data/runtime/snapshots and previous backup packages, checked before and after patch application",
+  "inventory_sha256": "0091dab954b17dc8562cfd9c57a5015f524ee01300a73886549adb9a91daee00"
+}

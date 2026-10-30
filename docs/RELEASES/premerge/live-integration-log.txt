@@ -1,0 +1,16 @@
+Wrote site\data\latest.json ; deterministic: True ; ensemble models: 1
+Real collection complete: navirai
+Wrote site\data\locations\diamantino\latest.json ; deterministic: True ; ensemble models: 1
+Real collection complete: diamantino
+Wrote site\data\latest.json ; deterministic: True ; ensemble models: 1
+Wrote site\data\locations\diamantino\latest.json ; deterministic: True ; ensemble models: 1
+Archive replay: no new commit or HTTP call
+{
+  "state": "archived",
+  "manifest": "imports/diamantino/9122306e32fa707eb3937b05f5156ca5928a33b1da98408531019569e4c5a2fd.json",
+  "compressed_bytes": 5231,
+  "new_bytes": 5231,
+  "projected_30_days_two_locations_bytes": 1255440,
+  "projected_365_days_two_locations_bytes": 15274520
+}
+{"checked_at_utc": "2026-10-29T19:43:09.052275+00:00", "elapsed_seconds": 101.0, "live_scope": "Full operational collector limited to NOAA GEFS for both locations, real deterministic forecast, real GEFS daily; optional ancillary sources excluded. Full science_daily request set for both locations.", "network_calls": 12, "operational": [{"location": "navirai", "requests": 4, "output": "site\\data\\latest.json"}, {"location": "diamantino", "requests": 3, "output": "site\\data\\locations\\diamantino\\latest.json"}], "gefs": {"state": "ok", "members": 30, "extended_days": 20, "first": "2026-11-12", "last": "2026-12-01"}, "repeat_collection_network_calls": 0, "repeat_archive_new_commits": 0, "monthly_restore": {"parts": 1, "files_verified": 16, "restored": "C:\\Users\\Usuario\\OneDrive - Unesp\\Documentos\\BOLETIM CLIMÁTICO\\tmp\\v22-premerge\\live-workflow\\restored-archive"}, "restored_counts_equal": true, "official_data_modified": false, "remote_push": false}

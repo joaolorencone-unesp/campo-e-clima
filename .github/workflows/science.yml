@@ -12,13 +12,13 @@ concurrency:
 jobs:
   science:
     if: github.event.repository.private == false && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 25
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.11'
       - run: pip install -r requirements-science.txt
@@ -28,7 +28,7 @@ jobs:
         run: python -m scripts.science_daily
       - name: Preserve recovery transport before attempting Git publication
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: science-history-${{ github.run_id }}
           path: runtime/imports
@@ -47,7 +47,7 @@ jobs:
           python -m scripts.archive_git --captures runtime/imports --push $EXTRA
       - name: Diagnostic log (temporary transport, not permanent archive)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: scientific-status-${{ github.run_id }}
           path: runtime/daily_status.json

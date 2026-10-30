@@ -33,7 +33,7 @@ def parse_gefs_extended(payload: dict, minimum_members: int=5) -> dict:
     rows=[]
     for i,day in enumerate(days):
         if i<14:continue   # dedicated extended segment after first 14 days
-        samples=[float(v[i]) for v in members.values() if isinstance(v[i],(int,float)) and math.isfinite(v[i]) and 0<=v[i]<=1000]
+        samples=[float(v[i]) for v in members.values() if isinstance(v[i],(int,float)) and not isinstance(v[i],bool) and math.isfinite(v[i]) and 0<=v[i]<=1000]
         if len(samples)<minimum_members:continue
         mean=sum(samples)/len(samples)
         rows.append({'date':day,'members':len(samples),'mean_mm':round(mean,2),
@@ -49,14 +49,16 @@ def parse_gefs_extended(payload: dict, minimum_members: int=5) -> dict:
             'note':'GEFS isolado, frequências de membros NÃO calibradas; resolução maior no prazo longo. Não é previsão multimodelo.'}
 
 
-def collect_gefs_extended(enabled: bool=True) -> dict:
+def collect_gefs_extended(enabled: bool=True, *, fetcher=None) -> dict:
     if not enabled:return {'state':'disabled','source_url':SOURCE,'note':'Coleta longa desativada.'}
     params={'latitude':-23.065,'longitude':-54.19,'timezone':'America/Campo_Grande',
             'models':'ncep_gefs_seamless','forecast_days':35,'daily':'precipitation_sum'}
     try:
-        r=requests.get(ENDPOINT,params=params,timeout=38,headers={'User-Agent':'Campo-e-Clima/1.3 (noncommercial research)'})
-        r.raise_for_status()
-        return parse_gefs_extended(r.json())
+        if fetcher:payload=fetcher(ENDPOINT,params)
+        else:
+            r=requests.get(ENDPOINT,params=params,timeout=38,headers={'User-Agent':'Campo-e-Clima/1.3 (noncommercial research)'})
+            r.raise_for_status();payload=r.json()
+        return parse_gefs_extended(payload)
     except (requests.RequestException,ValueError,TypeError) as exc:
         return {'state':'unavailable','source_url':SOURCE,'error':str(exc)[:180],
                 'note':'GEFS estendido não confirmou membros válidos. Sem preencher dias ausentes.'}

@@ -38,10 +38,13 @@ def prepare(root):
         if git(root,'status','--porcelain').stdout.strip():raise ValueError('Checkout de arquivo tem alterações locais; preservar e revisar')
         return root
     if root.exists() and any(root.iterdir()):raise ValueError('Checkout de arquivo exige pasta vazia')
+    root.parent.mkdir(parents=True,exist_ok=True)
+    remote=git(root.parent,'ls-remote','--heads',REPO,f'refs/heads/{BRANCH}')
+    if not remote.stdout.strip():
+        raise ValueError('Branch weather-archive ausente no remoto: publicar o backup aprovado antes de arquivar; criação vazia bloqueada')
     root.mkdir(parents=True,exist_ok=True)
     git(root,'init','--initial-branch',BRANCH)
     git(root,'remote','add','origin',REPO)
-    remote=git(root,'ls-remote','--heads','origin',f'refs/heads/{BRANCH}')
     if remote.stdout.strip():
         # Full archive history is required for the Git byte budget to be meaningful.
         git(root,'fetch','origin',BRANCH)
@@ -72,8 +75,11 @@ def publish(captures,root,*,push=False,train=False):
         try:out.append(archive_capture(file.parent,root,force_slot='import' if historical else None))
         except (ValueError,OSError) as exc:out.append({'state':'failed','location':doc['location']['id'],'reason':str(exc)})
     changed=any(x['state']=='archived' for x in out)
+    status_file=root/'public/archive_status.json'
+    previous=json.loads(status_file.read_text(encoding='utf-8')) if status_file.exists() else {}
     report_error=None
-    if changed or (not (root/'public/verification.json').exists() and list(root.glob('manifests/**/*.json'))):
+    reports_refreshed=False
+    if changed or previous.get('report_status')=='previous_preserved' or (not (root/'public/verification.json').exists() and list(root.glob('manifests/**/*.json'))):
         # SQLite/Parquet never enter the Git branch or the public website.
         try:
             with tempfile.TemporaryDirectory(prefix='campo-science-') as temporary:
@@ -84,18 +90,17 @@ def publish(captures,root,*,push=False,train=False):
                 for p in temp.glob('*.json'):
                     from scripts.science.common import atomic
                     atomic(root/'public'/p.name,p.read_bytes())
+                reports_refreshed=True
         except Exception as exc:
             # RAW remains publishable, prior derived reports remain byte-for-byte intact.
             report_error=type(exc).__name__+': '+str(exc)[:180]
             out.append({'state':'failed','reason':'Relatório derivado falhou; RAW preservado','error':report_error})
     storage=inventory(root);warn(storage)
-    status_file=root/'public/archive_status.json'
-    previous=json.loads(status_file.read_text(encoding='utf-8')) if status_file.exists() else {}
     failures=[x for x in out if x['state'] in ('failed','source_unavailable')]
-    update_status=changed or not previous or previous.get('storage',{}).get('severity')!=storage['severity'] or previous.get('failures')!=failures
+    update_status=changed or reports_refreshed or not previous or previous.get('storage',{}).get('severity')!=storage['severity'] or previous.get('failures')!=failures
     if update_status:
         write_json(status_file,{'updated_at_utc':now(),'results':out,'failures':failures,'storage':storage,
-            'report_status':'previous_preserved' if report_error else 'current' if changed else 'unchanged',
+            'report_status':'previous_preserved' if report_error else 'current' if reports_refreshed else previous.get('report_status','unchanged'),
             'manifest_count':len(list(root.glob('manifests/**/*.json')))+len(list(root.glob('imports/**/*.json'))),
             'recovery_note':'Capturas sem publicação permanecem no artifact temporário por 7 dias. Restaurar explicitamente antes de expirar.'})
     for folder in ('objects','manifests','imports','public'):

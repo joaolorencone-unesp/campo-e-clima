@@ -1,0 +1,409 @@
+[
+  {
+    "name": "published",
+    "url": "https://joaolorencone-unesp.github.io/campo-e-clima/data/latest.json",
+    "params": {},
+    "checked_at_utc": "2026-10-29T19:28:05.867480+00:00",
+    "status": 200,
+    "bytes": 397901,
+    "sha256": "866d376818aa64ba3cf3e1e94e6b3407224c8c44477fa17c4da3affdaefeae6f",
+    "keys": [
+      "schema_version",
+      "issued_at_utc",
+      "site",
+      "methodology",
+      "sources",
+      "deterministic",
+      "rain_ensemble_daily",
+      "gust_ensemble_daily",
+      "rain_ensemble_hourly",
+      "rain_models_daily",
+      "ensemble_models",
+      "spray_joint_hourly",
+      "spray_joint_windows_2h",
+      "spray_joint_model_status",
+      "hourly_forecast_start_local",
+      "warnings",
+      "official",
+      "embrapa_observations",
+      "historical_comparison",
+      "complementary"
+    ],
+    "issued_at_utc": "2026-10-29T15:31:41.110412+00:00",
+    "ensembles": {
+      "ECMWF IFS": {
+        "code": "ecmwf_ifs025_ensemble",
+        "precipitation_members": 50,
+        "precipitation_members_declared": 50,
+        "precipitation_members_valid_by_day": {
+          "2026-10-29": 50,
+          "2026-10-30": 50,
+          "2026-10-31": 50,
+          "2026-11-01": 50,
+          "2026-11-02": 50,
+          "2026-11-03": 50,
+          "2026-11-04": 50
+        },
+        "gust_members": 50,
+        "gust_members_declared": 50,
+        "gust_members_valid_by_day": {
+          "2026-10-29": 50,
+          "2026-10-30": 50,
+          "2026-10-31": 50,
+          "2026-11-01": 50,
+          "2026-11-02": 50,
+          "2026-11-03": 50,
+          "2026-11-04": 50
+        },
+        "precipitation_members_with_numeric": 50,
+        "gust_members_with_numeric": 50,
+        "grid_lat": -23.0,
+        "grid_lon": -54.25,
+        "collected_at_utc": "2026-10-29T15:31:42.404676+00:00",
+        "gust_request_error": null,
+        "fallback_short_horizon": false,
+        "coverage_days": 7,
+        "state": "ok"
+      },
+      "ECMWF AIFS": {
+        "code": "ecmwf_aifs025_ensemble",
+        "precipitation_members": 50,
+        "precipitation_members_declared": 50,
+        "precipitation_members_valid_by_day": {
+          "2026-10-29": 50,
+          "2026-10-30": 50,
+          "2026-10-31": 50,
+          "2026-11-01": 50,
+          "2026-11-02": 50,
+          "2026-11-03": 50,
+          "2026-11-04": 50
+        },
+        "gust_members": 0,
+        "gust_members_declared": 50,
+        "gust_members_valid_by_day": {
+          "2026-10-29": 0,
+          "2026-10-30": 0,
+          "2026-10-31": 0,
+          "2026-11-01": 0,
+          "2026-11-02": 0,
+          "2026-11-03": 0,
+          "2026-11-04": 0
+        },
+        "precipitation_members_with_numeric": 50,
+        "gust_members_with_numeric": 0,
+        "grid_lat": -23.0,
+        "grid_lon": -54.25,
+        "collected_at_utc": "2026-10-29T15:31:44.132271+00:00",
+        "gust_request_error": null,
+        "fallback_short_horizon": false,
+        "coverage_days": 7,
+        "state": "ok"
+      },
+      "NOAA GEFS": {
+        "code": "ncep_gefs_seamless",
+        "precipitation_members": 30,
+        "precipitation_members_declared": 30,
+        "precipitation_members_valid_by_day": {
+          "2026-10-29": 30,
+          "2026-10-30": 30,
+          "2026-10-31": 30,
+          "2026-11-01": 30,
+          "2026-11-02": 30,
+          "2026-11-03": 30,
+          "2026-11-04": 30
+        },
+        "gust_members": 30,
+        "gust_members_declared": 30,
+        "gust_members_valid_by_day": {
+          "2026-10-29": 30,
+          "2026-10-30": 30,
+          "2026-10-31": 30,
+          "2026-11-01": 30,
+          "2026-11-02": 30,
+          "2026-11-03": 30,
+          "2026-11-04": 30
+        },
+        "precipitation_members_with_numeric": 30,
+        "gust_members_with_numeric": 30,
+        "grid_lat": -23.0,
+        "grid_lon": -54.25,
+        "collected_at_utc": "2026-10-29T15:31:45.812532+00:00",
+        "gust_request_error": null,
+        "fallback_short_horizon": false,
+        "coverage_days": 7,
+        "state": "ok"
+      },
+      "NOAA AI-GEFS": {
+        "code": "ncep_aigefs025",
+        "precipitation_members": 30,
+        "precipitation_members_declared": 30,
+        "precipitation_members_valid_by_day": {
+          "2026-10-29": 30,
+          "2026-10-30": 30,
+          "2026-10-31": 30,
+          "2026-11-01": 30,
+          "2026-11-02": 30,
+          "2026-11-03": 30,
+          "2026-11-04": 30
+        },
+        "gust_members": 0,
+        "gust_members_declared": 30,
+        "gust_members_valid_by_day": {
+          "2026-10-29": 0,
+          "2026-10-30": 0,
+          "2026-10-31": 0,
+          "2026-11-01": 0,
+          "2026-11-02": 0,
+          "2026-11-03": 0,
+          "2026-11-04": 0
+        },
+        "precipitation_members_with_numeric": 30,
+        "gust_members_with_numeric": 0,
+        "grid_lat": -23.0,
+        "grid_lon": -54.25,
+        "collected_at_utc": "2026-10-29T15:31:47.489712+00:00",
+        "gust_request_error": null,
+        "fallback_short_horizon": false,
+        "coverage_days": 7,
+        "state": "ok"
+      },
+      "DWD ICON": {
+        "code": "dwd_icon_seamless_eps",
+        "state": "error",
+        "detail": "HTTPSConnectionPool(host='ensemble-api.open-meteo.com', port=443): Read timed out. (read timeout=35)"
+      },
+      "GEM Canada": {
+        "code": "gem_global_ensemble",
+        "state": "error",
+        "detail": "HTTPSConnectionPool(host='ensemble-api.open-meteo.com', port=443): Read timed out. (read timeout=35)"
+      },
+      "UKMO": {
+        "code": "ukmo_global_ensemble_20km",
+        "precipitation_members": 17,
+        "precipitation_members_declared": 17,
+        "precipitation_members_valid_by_day": {
+          "2026-10-29": 17,
+          "2026-10-30": 17,
+          "2026-10-31": 17,
+          "2026-11-01": 17,
+          "2026-11-02": 17,
+          "2026-11-03": 17,
+          "2026-11-04": 17
+        },
+        "gust_members": 17,
+        "gust_members_declared": 17,
+        "gust_members_valid_by_day": {
+          "2026-10-29": 17,
+          "2026-10-30": 17,
+          "2026-10-31": 17,
+          "2026-11-01": 17,
+          "2026-11-02": 17,
+          "2026-11-03": 17,
+          "2026-11-04": 17
+        },
+        "precipitation_members_with_numeric": 17,
+        "gust_members_with_numeric": 17,
+        "grid_lat": -23.0625,
+        "grid_lon": -54.28125,
+        "collected_at_utc": "2026-10-29T15:34:10.335146+00:00",
+        "gust_request_error": null,
+        "fallback_short_horizon": false,
+        "coverage_days": 7,
+        "state": "ok"
+      },
+      "Google WeatherNext2": {
+        "code": "google_weathernext2_ensemble",
+        "precipitation_members": 63,
+        "precipitation_members_declared": 63,
+        "precipitation_members_valid_by_day": {
+          "2026-10-29": 63,
+          "2026-10-30": 63,
+          "2026-10-31": 63,
+          "2026-11-01": 63,
+          "2026-11-02": 63,
+          "2026-11-03": 63,
+          "2026-11-04": 63
+        },
+        "gust_members": 0,
+        "gust_members_declared": 63,
+        "gust_members_valid_by_day": {
+          "2026-10-29": 0,
+          "2026-10-30": 0,
+          "2026-10-31": 0,
+          "2026-11-01": 0,
+          "2026-11-02": 0,
+          "2026-11-03": 0,
+          "2026-11-04": 0
+        },
+        "precipitation_members_with_numeric": 63,
+        "gust_members_with_numeric": 0,
+        "grid_lat": -23.0,
+        "grid_lon": -54.25,
+        "collected_at_utc": "2026-10-29T15:34:11.863618+00:00",
+        "gust_request_error": null,
+        "fallback_short_horizon": false,
+        "coverage_days": 7,
+        "state": "ok"
+      }
+    },
+    "gefs": {
+      "state": "unavailable",
+      "source_url": "https://open-meteo.com/en/docs/ensemble-api",
+      "error": "HTTPSConnectionPool(host='ensemble-api.open-meteo.com', port=443): Read timed out. (read timeout=38)",
+      "note": "GEFS estendido não confirmou membros válidos. Sem preencher dias ausentes."
+    },
+    "rain_dates": [
+      "2026-10-29",
+      "2026-10-30",
+      "2026-10-31",
+      "2026-11-01",
+      "2026-11-02",
+      "2026-11-03",
+      "2026-11-04"
+    ]
+  },
+  {
+    "name": "forecast_navirai",
+    "url": "https://api.open-meteo.com/v1/forecast",
+    "params": {
+      "latitude": -23.065,
+      "longitude": -54.19,
+      "timezone": "America/Campo_Grande",
+      "forecast_days": 2,
+      "hourly": "temperature_2m,precipitation"
+    },
+    "checked_at_utc": "2026-10-29T19:28:07.333842+00:00",
+    "status": 200,
+    "bytes": 1726,
+    "sha256": "ddcb77fa8c08dbeaefe54810516d1cb5728a20fb8fd05a8f86f81b4fc340241a",
+    "keys": [
+      "latitude",
+      "longitude",
+      "generationtime_ms",
+      "utc_offset_seconds",
+      "timezone",
+      "timezone_abbreviation",
+      "elevation",
+      "hourly_units",
+      "hourly"
+    ],
+    "hourly": {
+      "steps": 48,
+      "first": [
+        "2026-10-29T00:00"
+      ],
+      "last": [
+        "2026-10-30T23:00"
+      ],
+      "members": 0,
+      "numeric_values": 0,
+      "units": {
+        "time": "iso8601",
+        "temperature_2m": "°C",
+        "precipitation": "mm"
+      }
+    },
+    "daily": {
+      "steps": 0,
+      "first": [],
+      "last": [],
+      "members": 0,
+      "numeric_values": 0,
+      "units": null
+    }
+  },
+  {
+    "name": "ensemble_navirai",
+    "url": "https://ensemble-api.open-meteo.com/v1/ensemble",
+    "params": {
+      "latitude": -23.065,
+      "longitude": -54.19,
+      "timezone": "America/Campo_Grande",
+      "models": "ncep_gefs_seamless",
+      "forecast_days": 4,
+      "hourly": "precipitation"
+    },
+    "checked_at_utc": "2026-10-29T19:28:08.992262+00:00",
+    "status": 200,
+    "bytes": 18696,
+    "sha256": "a81d33fa8d524b73cb7edca4c064af25895c7f43ea426b081e0eb650951c276c",
+    "keys": [
+      "latitude",
+      "longitude",
+      "generationtime_ms",
+      "utc_offset_seconds",
+      "timezone",
+      "timezone_abbreviation",
+      "elevation",
+      "hourly_units",
+      "hourly"
+    ],
+    "hourly": {
+      "steps": 96,
+      "first": [
+        "2026-10-29T00:00"
+      ],
+      "last": [
+        "2026-11-01T23:00"
+      ],
+      "members": 30,
+      "numeric_values": 2880,
+      "units": null
+    },
+    "daily": {
+      "steps": 0,
+      "first": [],
+      "last": [],
+      "members": 0,
+      "numeric_values": 0,
+      "units": null
+    }
+  },
+  {
+    "name": "gefs_original_daily",
+    "url": "https://ensemble-api.open-meteo.com/v1/ensemble",
+    "params": {
+      "latitude": -23.065,
+      "longitude": -54.19,
+      "timezone": "America/Campo_Grande",
+      "models": "ncep_gefs_seamless",
+      "forecast_days": 35,
+      "daily": "precipitation_sum"
+    },
+    "checked_at_utc": "2026-10-29T19:28:10.899514+00:00",
+    "status": 200,
+    "bytes": 8402,
+    "sha256": "435e7c46794d9b749af2ce5c2fc1c893f123b3f112a509aab2913fb25f813bdc",
+    "keys": [
+      "latitude",
+      "longitude",
+      "generationtime_ms",
+      "utc_offset_seconds",
+      "timezone",
+      "timezone_abbreviation",
+      "elevation",
+      "daily_units",
+      "daily"
+    ],
+    "hourly": {
+      "steps": 0,
+      "first": [],
+      "last": [],
+      "members": 0,
+      "numeric_values": 0,
+      "units": null
+    },
+    "daily": {
+      "steps": 35,
+      "first": [
+        "2026-10-29"
+      ],
+      "last": [
+        "2026-12-02"
+      ],
+      "members": 30,
+      "numeric_values": 1020,
+      "units": null
+    }
+  }
+]

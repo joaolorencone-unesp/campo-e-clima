@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import subprocess
+import time
 from pathlib import Path
 from scripts.science.common import config, location, now, write_json
 from scripts.science.database import migrate, backup, counts
@@ -12,7 +13,7 @@ from scripts.science.ingest import ingest_manifest, export_parquet
 from scripts.science.archive import archive_capture, rebuild
 from scripts.science.http import FreeClient
 
-def collect(location_id, runtime, *, database=None):
+def collect(location_id, runtime, *, database=None, deadline=None):
     import scripts.collect as collector
     import scripts.sources.official as official
     from scripts.science import capture as capture_module
@@ -20,13 +21,20 @@ def collect(location_id, runtime, *, database=None):
     directory=Path(runtime)/'captures'/location_id
     cap=Capture(directory,location_id)
     client=FreeClient(Path(runtime)/'http_cache',cap)
+    client.deadline=deadline
     original_official=official.http_json
     original_fetch=collector.fetch;old=(collector.LAT,collector.LON,collector.TZ)
     old_output=os.environ.get('OUTPUT_JSON')
     dest=Path('site/data/latest.json' if location_id=='navirai' else f'site/data/locations/{location_id}/latest.json')
     collector.LAT,collector.LON,collector.TZ=loc['latitude'],loc['longitude'],loc['timezone']
     def fetch(url,params):
-        return client.get(url,params,ttl_hours=.45 if 'ensemble-api.' not in url else 6)
+        def validate(payload):
+            if params.get('daily') and 'ensemble-api.' in url:
+                from scripts.sources.gefs_extended import parse_gefs_extended
+                parse_gefs_extended(payload)
+            else:collector.validate_forecast(payload)
+        product='extended_ensemble' if params.get('daily') and 'ensemble-api.' in url else 'operational'
+        return client.get(url,params,ttl_hours=.45 if 'ensemble-api.' not in url else 6,validator=validate,product=product)
     collector.fetch=fetch
     official.http_json=lambda url,timeout=18: client.get(url,{},ttl_hours=0.45,product="official_response")
     os.environ['OUTPUT_JSON']=str(dest)
@@ -38,11 +46,21 @@ def collect(location_id, runtime, *, database=None):
         # Cache hits retain the actual acquisition time, never the current UI refresh time.
         for event in cap.manifest['requests']:
             if event.get('http_status')!=200:continue
+            if event.get('product')=='extended_ensemble' and event.get('payload_valid',True):
+                extended=public.get('complementary',{}).get('gefs_extended',{})
+                if extended.get('state')=='ok':
+                    extended.update(collected_at_utc=event['collected_at_utc'],cache_hit=event.get('cache_hit',False))
+                    # The daily product cache must also retain the original acquisition clock.
+                    slow=Path('site/data/slow_sources_cache.json')
+                    if slow.exists():
+                        daily_cache=json.loads(slow.read_text(encoding='utf-8'))
+                        daily_cache.setdefault('sources',{})['gefs_extended']=extended
+                        write_json(slow,daily_cache)
             if event['source_url']=='https://api.open-meteo.com/v1/forecast' and not event['params'].get('models') and event.get('product')=='operational' and public.get('deterministic'):
                 public['deterministic']['collected_at_utc']=event['collected_at_utc']
                 public['sources']['Open-Meteo Forecast']['collected_at_utc']=event['collected_at_utc']
             for model in public.get('ensemble_models',{}).values():
-                if model.get('code')==event['params'].get('models'):
+                if model.get('code')==event['params'].get('models') and event['params'].get('forecast_days') and event['params'].get('hourly'):
                     model['collected_at_utc']=event['collected_at_utc']
                     model['cache_hit']=event.get('cache_hit',False)
         write_json(dest,public)
@@ -77,12 +95,15 @@ def main(argv=None):
     p.add_argument('--model',default='ecmwf_ifs025')
     p.add_argument('--start');p.add_argument('--end');p.add_argument('--run');p.add_argument('--since')
     p.add_argument('--file');p.add_argument('--station');p.add_argument('--format',default='canonical',choices=['canonical','inmet'])
+    p.add_argument('--collection-budget-seconds',type=int,default=900)
     a=p.parse_args(argv)
     if a.command=='rebuild':result=rebuild(a.archive,a.output or a.db,since=a.since)
     elif a.command=='collect':
+        if not 1<=a.collection_budget_seconds<=1200:p.error('Orçamento de coleta deve ficar entre 1 e 1200 segundos')
+        deadline=time.monotonic()+a.collection_budget_seconds
         result=[]
         for loc in (['navirai','diamantino'] if a.location=='all' else [a.location]):
-            try:result.append(collect(loc,a.runtime,database=a.db))
+            try:result.append(collect(loc,a.runtime,database=a.db,deadline=deadline))
             except (Exception,SystemExit) as exc:
                 if loc=='navirai':raise
                 result.append({'location':loc,'state':'failed','error':type(exc).__name__})
