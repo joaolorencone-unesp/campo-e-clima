@@ -31,6 +31,22 @@ def test_missing_remote_archive_refuses_empty_bootstrap(tmp_path,monkeypatch):
     monkeypatch.setattr(writer,'git',fake_git)
     with pytest.raises(ValueError,match='weather-archive'):prepare(tmp_path/'new')
 
+def test_ls_remote_retries_without_token_header_on_auth_failure(tmp_path,monkeypatch):
+    import scripts.archive_git as writer
+    calls=[]
+    def fake_run(command,**kwargs):
+        calls.append(kwargs['env'])
+        if len(calls)==1:
+            return subprocess.CompletedProcess(command,128,stdout='',stderr='fatal: Authentication failed')
+        return subprocess.CompletedProcess(command,0,stdout='sha\trefs/heads/weather-archive\n',stderr='')
+    monkeypatch.setenv('GH_TOKEN','fake-token')
+    monkeypatch.setattr(writer.subprocess,'run',fake_run)
+    result=writer.git(tmp_path,'ls-remote','--heads',writer.REPO,'refs/heads/weather-archive')
+    assert result.stdout.strip()=='sha\trefs/heads/weather-archive'
+    assert len(calls)==2 and calls[0].get('GIT_CONFIG_COUNT')=='1'
+    assert calls[0].get('GIT_CONFIG_VALUE_0','').startswith('AUTHORIZATION: basic ')
+    assert not calls[1].get('GIT_CONFIG_VALUE_0','').startswith('AUTHORIZATION: basic ')
+
 def test_rate_limit_stops_following_models_and_clients(tmp_path,monkeypatch):
     class Session:
         calls=0
