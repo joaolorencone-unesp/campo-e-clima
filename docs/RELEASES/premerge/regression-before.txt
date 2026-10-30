@@ -1,0 +1,156 @@
+FFFFFF                                                                   [100%]
+================================== FAILURES ===================================
+______________ test_report_failure_recovers_without_new_weather _______________
+
+tmp_path = WindowsPath('C:/Users/Usuario/OneDrive - Unesp/Documentos/BOLETIM CLIMÁTICO/tmp/v22-premerge/source/.test_runs/premerge_red2/test_report_failure_recovers_w0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001E5F0ABF100>
+
+    def test_report_failure_recovers_without_new_weather(tmp_path,monkeypatch):
+        root=tmp_path/'archive';git=repo(root);capture(tmp_path)
+        publish(tmp_path/'captures',root);capture(tmp_path,'02')
+        import scripts.archive_git as writer
+        original=writer.evaluate
+        with monkeypatch.context() as m:
+            m.setattr(writer,'evaluate',lambda *a:(_ for _ in ()).throw(RuntimeError('transient')))
+            with pytest.raises(RuntimeError):publish(tmp_path/'captures',root)
+        before=json.loads((root/'public/verification.json').read_text())
+        calls=[]
+        def tracking(*args):calls.append(True);return original(*args)
+        monkeypatch.setattr(writer,'evaluate',tracking)
+        publish(tmp_path/'captures',root)
+>       assert calls,'The preserved RAW must be reprocessed even without a new capture'
+E       AssertionError: The preserved RAW must be reprocessed even without a new capture
+E       assert []
+
+tests\test_premerge_v22.py:24: AssertionError
+_____________ test_missing_remote_archive_refuses_empty_bootstrap _____________
+
+tmp_path = WindowsPath('C:/Users/Usuario/OneDrive - Unesp/Documentos/BOLETIM CLIMÁTICO/tmp/v22-premerge/source/.test_runs/premerge_red2/test_missing_remote_archive_re0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001E5F0B15B50>
+
+    def test_missing_remote_archive_refuses_empty_bootstrap(tmp_path,monkeypatch):
+        import scripts.archive_git as writer
+        def fake_git(root,*args,**kwargs):return subprocess.CompletedProcess(args,0,stdout='',stderr='')
+        monkeypatch.setattr(writer,'git',fake_git)
+>       with pytest.raises(ValueError,match='weather-archive'):prepare(tmp_path/'new')
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE ValueError
+
+tests\test_premerge_v22.py:32: Failed
+_____________ test_rate_limit_stops_following_models_and_clients ______________
+
+tmp_path = WindowsPath('C:/Users/Usuario/OneDrive - Unesp/Documentos/BOLETIM CLIMÁTICO/tmp/v22-premerge/source/.test_runs/premerge_red2/test_rate_limit_stops_followin0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001E5F0AE3CE0>
+
+    def test_rate_limit_stops_following_models_and_clients(tmp_path,monkeypatch):
+        class Session:
+            calls=0
+            def get(self,*a,**k):
+                self.calls+=1;r=requests.Response();r.status_code=429;r._content=b'{"error":true}';r.headers={'Retry-After':'3600'};return r
+        session=Session();root=tmp_path/'cache'
+        for model in ['ecmwf_ifs025_ensemble','ncep_gefs_seamless']:
+            with pytest.raises(requests.HTTPError):FreeClient(root,session=session).get('https://ensemble-api.open-meteo.com/v1/ensemble',{'models':model})
+>       assert session.calls==1,'A 429 must stop subsequent model requests for its cooldown'
+E       AssertionError: A 429 must stop subsequent model requests for its cooldown
+E       assert 2 == 1
+E        +  where 2 = <test_premerge_v22.test_rate_limit_stops_following_models_and_clients.<locals>.Session object at 0x000001E5F0B89E80>.calls
+
+tests\test_premerge_v22.py:42: AssertionError
+_________ test_corrupt_response_cache_does_not_block_new_acquisition __________
+
+tmp_path = WindowsPath('C:/Users/Usuario/OneDrive - Unesp/Documentos/BOLETIM CLIMÁTICO/tmp/v22-premerge/source/.test_runs/premerge_red2/test_corrupt_response_cache_do0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001E5F0C3C490>
+
+    def test_corrupt_response_cache_does_not_block_new_acquisition(tmp_path,monkeypatch):
+        from scripts.science.common import digest,packed
+        url='https://api.open-meteo.com/v1/forecast';params={'latitude':-23.065};root=tmp_path/'cache';root.mkdir()
+        (root/(digest(packed([url,params]))+'.json')).write_text('{broken')
+        class Session:
+            calls=0
+            def get(self,*a,**k):
+                self.calls+=1;r=requests.Response();r.status_code=200;r._content=b'{"hourly":{"time":["2026-10-29T00:00"],"temperature_2m":[24]}}';return r
+        session=Session();monkeypatch.setattr('scripts.science.http.time.sleep',lambda _:None)
+>       assert FreeClient(root,session=session).get(url,params)['hourly']['temperature_2m']==[24]
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_premerge_v22.py:53:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+scripts\science\http.py:27: in get
+    old=json.loads(cache.read_text(encoding='utf-8'))
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\Lib\json\__init__.py:346: in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\Lib\json\decoder.py:345: in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <json.decoder.JSONDecoder object at 0x000001E5EE29C6E0>, s = '{broken'
+idx = 0
+
+    def raw_decode(self, s, idx=0):
+        """Decode a JSON document from ``s`` (a ``str`` beginning with
+        a JSON document) and return a 2-tuple of the Python
+        representation and the index in ``s`` where the document ended.
+
+        This can be used to decode a JSON document from a string that may
+        have extraneous data at the end.
+
+        """
+        try:
+>           obj, end = self.scan_once(s, idx)
+                       ^^^^^^^^^^^^^^^^^^^^^^
+E           json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+
+D:\Lib\json\decoder.py:361: JSONDecodeError
+__________________ test_forecast_with_no_weather_is_rejected __________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001E5F0C70E50>
+
+    def test_forecast_with_no_weather_is_rejected(monkeypatch):
+        import scripts.collect as collector
+        monkeypatch.setattr(collector,'fetch',lambda *a:{'utc_offset_seconds':-14400,'hourly':{'time':['2026-10-29T00:00'],'temperature_2m':[None]}})
+>       with pytest.raises(ValueError):collector.forecast()
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE ValueError
+
+tests\test_premerge_v22.py:59: Failed
+________ test_scientific_collection_keeps_rain_age_separate_from_spray ________
+
+tmp_path = WindowsPath('C:/Users/Usuario/OneDrive - Unesp/Documentos/BOLETIM CLIMÁTICO/tmp/v22-premerge/source/.test_runs/premerge_red2/test_scientific_collection_kee0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001E5F0C9CE50>
+
+    def test_scientific_collection_keeps_rain_age_separate_from_spray(tmp_path,monkeypatch):
+        import scripts.collect as collector
+        import scripts.science_cli as cli
+        from scripts.science.common import packed
+        class Client:
+            def __init__(self,root,cap):self.cap=cap
+            def get(self,url,params,**kwargs):
+                e=self.cap.record(url,params,content=packed({'hourly':{}}),status=200)
+                e['collected_at_utc']='2026-10-29T06:00:00+00:00' if params.get('forecast_days') else '2026-10-29T12:00:00+00:00'
+                return {}
+        def collection(**kwargs):
+            for params in ({'models':'gfs','forecast_days':7,'hourly':'precipitation'},{'models':'gfs','forecast_hours':80,'hourly':'precipitation,temperature_2m'}):collector.fetch(collector.ENSEMBLE_URL,params)
+            p=Path('site/data/latest.json');p.parent.mkdir(parents=True);p.write_text(json.dumps({'issued_at_utc':'2026-10-29T12:00:00+00:00','site':{},'ensemble_models':{'GFS':{'code':'gfs'}},'sources':{}}))
+        monkeypatch.chdir(tmp_path);monkeypatch.setattr(cli,'FreeClient',Client);monkeypatch.setattr(collector,'main',collection)
+        cli.collect('navirai',tmp_path/'runtime')
+        value=json.loads(Path('site/data/latest.json').read_text())
+>       assert value['ensemble_models']['GFS']['collected_at_utc']=='2026-10-29T06:00:00+00:00'
+E       AssertionError: assert '2026-10-29T12:00:00+00:00' == '2026-10-29T06:00:00+00:00'
+E
+E         - 2026-10-29T06:00:00+00:00
+E         ?            ^^
+E         + 2026-10-29T12:00:00+00:00
+E         ?            ^^
+
+C:\Users\Usuario\OneDrive - Unesp\Documentos\BOLETIM CLIMÁTICO\tmp\v22-premerge\source\tests\test_premerge_v22.py:77: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_premerge_v22.py::test_report_failure_recovers_without_new_weather
+FAILED tests/test_premerge_v22.py::test_missing_remote_archive_refuses_empty_bootstrap
+FAILED tests/test_premerge_v22.py::test_rate_limit_stops_following_models_and_clients
+FAILED tests/test_premerge_v22.py::test_corrupt_response_cache_does_not_block_new_acquisition
+FAILED tests/test_premerge_v22.py::test_forecast_with_no_weather_is_rejected
+FAILED tests/test_premerge_v22.py::test_scientific_collection_keeps_rain_age_separate_from_spray
+6 failed in 1.60s

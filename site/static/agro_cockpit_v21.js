@@ -127,11 +127,11 @@
   const rain24=rows.length>=24 && rows.slice(0,24).every((r,j)=>val(hourly.precipitation,r.i)!==null && (j===0 || r.millis-rows[j-1].millis===3600000))?
    rows.slice(0,24).reduce((sum,r)=>sum+val(hourly.precipitation,r.i),0):null;
   const gustVals=rows.map(r=>r.a.gust).filter(finite),maxGust=gustVals.length?Math.max(...gustVals):null;
-  const restricted=rows.filter(r=>r.a.cls==='restrita').length,missing=rows.filter(r=>r.a.cls==='indeterminada').length;
+  const restricted=rows.filter(r=>['restrita','marginal'].includes(category(r.a,op))).length,missing=rows.filter(r=>category(r.a,op)==='indeterminada').length;
   const nextThree=rows[0].a.rain,day=rows[0].time.slice(0,10),ensemble=ensembleInfo(raw,day);
   kpBox.innerHTML=kp('🌧 Chuva prevista • próximas 24 h',rain24===null?'—':fmt(rain24)+' mm','Open-Meteo determinístico • horas futuras completas')+
    kp('💨 Maior rajada no período',maxGust===null?'—':fmt(maxGust)+' km/h','Modelo a 10 m • não medição na fazenda')+
-   kp('🕒 Horas com restrição numérica',`${restricted}/${rows.length}`,'Somente filtros experimentais de pulverização')+
+   kp('🕒 Horas com restrição numérica',`${restricted}/${rows.length}`,op==='spray'?'Filtros experimentais de pulverização':'Critérios experimentais específicos de '+opLabel(op))+
    kp('🌦 Ensembles • dia selecionado',ensemble?fmt(ensemble.over1*100,0)+'%':'—',ensemble?`>1 mm/dia • ${ensemble.models} modelos / ${ensemble.members} membros`:'Sem frequência multimodelo válida');
   let notes=[];
   if(ensemble)notes.push(insight('Chuva residual versus mensurável',`Neste dia, ${fmt(ensemble.trace*100,0)}% do peso dos membros indica chuva >0,1 mm e ${fmt(ensemble.over1*100,0)}% indica >1 mm. Diferença de ${fmt((ensemble.trace-ensemble.over1)*100,0)} pontos percentuais. Frequências NÃO calibradas.`));

@@ -1,0 +1,83 @@
+{
+  "checkout": {
+    "name": "checkout",
+    "tag": "v7.0.1",
+    "sha": "3d3c42e5aac5ba805825da76410c181273ba90b1",
+    "type": "commit",
+    "runtime": "node24",
+    "artifact_mentions": []
+  },
+  "setup-python": {
+    "name": "setup-python",
+    "tag": "v7.1.0",
+    "sha": "6d4fd22b20465ccc0f7354476588e8df7c9ca0e0",
+    "type": "commit",
+    "runtime": "node24",
+    "artifact_mentions": []
+  },
+  "setup-node": {
+    "name": "setup-node",
+    "tag": "v7.1.0",
+    "sha": "949feb2413d6458794dcd2491c4babbbce0c15c1",
+    "type": "commit",
+    "runtime": "node24",
+    "artifact_mentions": []
+  },
+  "cache": {
+    "name": "cache",
+    "tag": "v6.1.0",
+    "sha": "55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
+    "type": "commit",
+    "runtime": "node24",
+    "artifact_mentions": []
+  },
+  "upload-artifact": {
+    "name": "upload-artifact",
+    "tag": "v7.0.2",
+    "sha": "cf430e030ddbb5b0abf93d22962f4752f3646cd9",
+    "type": "commit",
+    "runtime": "node24",
+    "artifact_mentions": [
+      "  compression-level:",
+      "  archive:",
+      "  artifact-id:"
+    ]
+  },
+  "download-artifact": {
+    "name": "download-artifact",
+    "tag": "v8.0.2",
+    "sha": "9000827ccba6bdab643e8b6fd33ac0654aef8333",
+    "type": "commit",
+    "runtime": "node24",
+    "artifact_mentions": [
+      "  github-token:",
+      "  run-id:"
+    ]
+  },
+  "configure-pages": {
+    "name": "configure-pages",
+    "tag": "v6.0.0",
+    "sha": "45bfe0192ca1faeb007ade9deae92b16b8254a0d",
+    "type": "commit",
+    "runtime": "node24",
+    "artifact_mentions": []
+  },
+  "deploy-pages": {
+    "name": "deploy-pages",
+    "tag": "v5.0.1",
+    "sha": "368f82528645a54fb793d4d04e342629a3f51346",
+    "type": "commit",
+    "runtime": "node24",
+    "artifact_mentions": []
+  },
+  "upload-pages-artifact": {
+    "name": "upload-pages-artifact",
+    "tag": "v5.0.0",
+    "sha": "fc324d3547104276b827a68afc52ff2a11cc49c9",
+    "type": "commit",
+    "runtime": "composite",
+    "artifact_mentions": [
+      "      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0"
+    ]
+  }
+}

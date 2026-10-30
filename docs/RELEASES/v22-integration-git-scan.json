@@ -1,0 +1,17 @@
+{
+  "checked_at_utc": "2026-10-29T18:40:36.825547+00:00",
+  "refs": {
+    "main": "e1241e208033baf3260d86c8ba4b03e56ba92300",
+    "origin/main": "e1241e208033baf3260d86c8ba4b03e56ba92300",
+    "weather-archive": "4bb516702e78cdf699ae00577d3a12d1417e74a6",
+    "code_base": "7da5e68e869dbc4c38d70bee298234ec98b7ef7b"
+  },
+  "files_scanned": {
+    "code": 201,
+    "weather-archive": 66
+  },
+  "forbidden_code_paths": [],
+  "credential_pattern_findings": [],
+  "scan_scope": "Current index and complete data-branch tree, including decompressed RAW. Pattern scan is not a guarantee against every secret.",
+  "main_is_ancestor": true
+}

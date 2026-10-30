@@ -1,0 +1,29 @@
+{
+  "base": "http://127.0.0.1:8778",
+  "checked_at_utc": "2026-10-29T23:54:05.348Z",
+  "source": "Isolated real weather collected on 2026-10-29; not official data",
+  "cases": [
+    {
+      "mobile": false,
+      "calendar_dates": 30,
+      "gefs_days": 16,
+      "gefs_members": 30,
+      "freshness": "Ensembles — coleta mais antiga em uso: 29/10/2026, 15:41 (horário local do ponto)",
+      "js_errors": [],
+      "missing_local_resources": [],
+      "horizontal_overflow": false,
+      "precision_no_observations": true
+    },
+    {
+      "mobile": true,
+      "calendar_dates": 30,
+      "gefs_days": 16,
+      "gefs_members": 30,
+      "freshness": "Ensembles — coleta mais antiga em uso: 29/10/2026, 15:41 (horário local do ponto)",
+      "js_errors": [],
+      "missing_local_resources": [],
+      "horizontal_overflow": false,
+      "precision_no_observations": true
+    }
+  ]
+}

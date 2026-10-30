@@ -38,7 +38,8 @@ def test_user_selectable_location_isolated_from_navarai_official():
     script=(BASE/'site/static/location.js').read_text(encoding='utf-8')
     assert "$('official-alert-strip').hidden=custom" in script
     assert 'custom:true' in script
-    assert "state=null;document.querySelectorAll('.tab .plot')" in script
+    assert "state=null;document.querySelectorAll('.tab:not(#precision) .plot')" in script
+    assert "querySelectorAll('.tab:not(#precision) table')" in script
     assert "point.latitude" in script and "point.longitude" in script
     assert 'OPENWEATHER' not in script
 

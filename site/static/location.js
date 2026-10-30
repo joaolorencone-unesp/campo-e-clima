@@ -87,7 +87,9 @@ function computeModel(payload){
  const dR={},dG={},hr={},rainMeans=[];
  for(const [day,ids] of Object.entries(days).slice(0,7)){
   if(ids.length!==24)continue;
-  const r=rain.flatMap(m=>{const v=ids.map(i=>m[i]);return v.every(x=>finite(x)&&x>=0)?[v.reduce((a,b)=>a+b,0)]:[];});
+  const rainIds=times.map((t,i)=>({i,day:new Date(Date.parse(t+'Z')-3600000).toISOString().slice(0,10)})).filter(x=>x.day===day).map(x=>x.i);
+  const rainComplete=rainIds.length===24 && times[rainIds[0]].slice(11,16)==='01:00' && times[rainIds[23]].slice(11,16)==='00:00' && rainIds.every((i,j)=>!j||Date.parse(times[i]+'Z')-Date.parse(times[rainIds[j-1]]+'Z')===3600000);
+  const r=rainComplete?rain.flatMap(m=>{const v=rainIds.map(i=>m[i]);return m.length===times.length&&v.every(x=>finite(x)&&x>=0)?[v.reduce((a,b)=>a+b,0)]:[];}):[];
   const g=gust.flatMap(m=>{const v=ids.map(i=>m[i]);return v.every(x=>finite(x)&&x>=0)?[Math.max(...v)]:[];});
   if(r.length)dR[day]=r;if(g.length)dG[day]=g;
  }
@@ -482,8 +484,8 @@ async function getElevation(point,token){
 }
 async function select(point){try{busy=false;sprayRunKey=null;sprayLastAttempt={key:null,at:0};const pair=validate(Number(point.latitude),Number(point.longitude));if(locEquals(pair,DEFAULT))return reset();const name=String(point.name||'Coordenadas personalizadas').trim().slice(0,62)||'Coordenadas personalizadas';applyPoint({...pair,timezone:'auto',name,custom:true});
  // Remove Naviraí forecast immediately on switching, even if API fails.
- state=null;document.querySelectorAll('.tab .plot').forEach(e=>{if(e.id)clearPlot(e.id,'Consultando dados para o novo ponto…');});
- document.querySelectorAll('.tab table').forEach(t=>{t.innerHTML='<tbody><tr><td>Aguardando dados válidos para as coordenadas selecionadas.</td></tr></tbody>';});
+ state=null;document.querySelectorAll('.tab:not(#precision) .plot').forEach(e=>{if(e.id)clearPlot(e.id,'Consultando dados para o novo ponto…');});
+ document.querySelectorAll('.tab:not(#precision) table').forEach(t=>{t.innerHTML='<tbody><tr><td>Aguardando dados válidos para as coordenadas selecionadas.</td></tr></tbody>';});
  $('status').textContent='Consultando o ponto selecionado. Os resultados anteriores de Naviraí foram removidos para evitar mistura de localidades.';
  $('nasa-summary').innerHTML='';setNasa('Consultando histórico NASA POWER para a coordenada…');
  $('metrics').innerHTML='';$('insights').textContent='Aguardando nova previsão específica da coordenada selecionada.';

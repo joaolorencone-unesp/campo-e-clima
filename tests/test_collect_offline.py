@@ -8,7 +8,7 @@ def test_collector_builds_json_from_stubbed_api(tmp_path, monkeypatch):
     from datetime import date, timedelta
     day = date(2026, 10, 26)
     times = [(day + timedelta(days=k)).isoformat() + f'T{hour:02d}:00'
-             for k in range(7) for hour in range(24)]
+             for k in range(7) for hour in range(24)] + [(day + timedelta(days=7)).isoformat()+'T00:00']
     forecast = {
         'utc_offset_seconds': -14400, 'latitude': -23.1, 'longitude': -54.2,
         'hourly': {'time': times, 'temperature_2m': [24]*len(times),

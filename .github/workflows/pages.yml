@@ -11,28 +11,30 @@ on:
       - 'scripts/**'
       - 'data/observacoes/**'
       - 'requirements.txt'
+      - 'requirements-science.txt'
+      - 'config/**'
       - '.github/workflows/pages.yml'
 permissions:
   contents: read
-  pages: write
-  id-token: write
 concurrency:
   group: pages
   cancel-in-progress: false
+  queue: max
 jobs:
   build:
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+    if: github.event.repository.private == false && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 25
+    outputs:
+      capture_artifact: ${{ steps.capture-upload.outputs.artifact-id }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.11'
       - run: pip install -r requirements.txt
-      - name: Unit tests
-        run: python -m pytest -q
+      - name: Operational collector tests (full science tests run in PR CI)
+        run: python -m pytest -q tests/test_collect_offline.py tests/test_ensemble.py
       - name: Front-end update smoke test (offline)
         run: node tests/frontend_smoke.cjs
       - name: Rain trace and dry-scenario regression (offline)
@@ -45,30 +47,41 @@ jobs:
         run: node tests/test_maps_controls_v20.cjs
       - name: Central Agro decision rules and recent-history regression (offline)
         run: node tests/test_agro_cockpit_v21.cjs
+      - name: Scientific precision UI regression (offline)
+        run: node tests/test_precision_v22.cjs
       # NASA POWER and ECMWF extended series update at most once per local day.
       # The cache is shared between scheduled runs, avoiding 48 identical daily requests.
       - name: Set local day for slow-source cache
         run: echo "SLOW_DAY=$(TZ=America/Campo_Grande date +%F)" >> "$GITHUB_ENV"
       - name: Restore/cache slow source products
-        uses: actions/cache@v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: site/data/slow_sources_cache.json
-          key: slow-sources-v13-${{ env.SLOW_DAY }}
+          key: slow-sources-v22-retry-${{ env.SLOW_DAY }}-${{ github.run_id }}
+          restore-keys: |
+            slow-sources-v22-retry-${{ env.SLOW_DAY }}-
       # Seasonal product is checked only once per ISO week, not on every visit.
       - name: Set ISO week for seasonal cache
         run: echo "SLOW_WEEK=$(TZ=America/Campo_Grande date +%G-W%V)" >> "$GITHUB_ENV"
       - name: Restore/cache weekly ECMWF product
-        uses: actions/cache@v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: site/data/weekly_sources_cache.json
           key: seasonal-v13-${{ env.SLOW_WEEK }}
       - name: Set climatology cache month
         run: echo "CLIMATE_MONTH=$(TZ=America/Campo_Grande date +%Y-%m)" >> "$GITHUB_ENV"
       - name: Restore/cache 1991–2020 climate baseline (monthly)
-        uses: actions/cache@v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: site/data/climate_cache.json
           key: climate-era5-land-v08-${{ env.CLIMATE_MONTH }}
+      - name: Restore short-lived HTTP cache and estimated quota ledger
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: runtime/http_cache
+          key: weather-http-v22-${{ env.SLOW_DAY }}-${{ github.run_id }}
+          restore-keys: |
+            weather-http-v22-${{ env.SLOW_DAY }}-
       - name: Collect forecasts
         env:
           NASA_POWER_ENABLE: '1'
@@ -77,13 +90,12 @@ jobs:
           CLIMATE_ERA5_ENABLE: '0' # Pausada até validar a completude dos 30 anos em grade.
           # Optional NEW secret, used exclusively by free /data/2.5/forecast API.
           OPENWEATHER_FREE_API_KEY: ${{ secrets.OPENWEATHER_FREE_API_KEY }}
-        run: python scripts/collect.py
-      # Temporary audit snapshots for future forecast verification; NOT permanent storage.
-      # GitHub artifact retention is limited. Move to durable object storage later.
+        run: python -m scripts.science_cli collect --location all
       - name: Export free INMET station metadata for arbitrary farm coordinates
+        continue-on-error: true
         run: python scripts/export_inmet_catalog.py
       - name: Restore daily observed-vs-gridded historical archive (Naviraí)
-        uses: actions/cache@v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: site/data/history_daily_cache.json
           key: history-navirai-v19-${{ env.SLOW_DAY }}
@@ -92,18 +104,72 @@ jobs:
       - name: Refresh Naviraí gridded history (NASA POWER and ERA5)
         continue-on-error: true
         run: python -m scripts.collect_history_v19
-      - name: Archive collected forecast snapshot (up to 90 days)
-        uses: actions/upload-artifact@v4
+      - name: Export previously verified scientific reports
         continue-on-error: true
+        run: python -m scripts.export_science_public
+      - name: Avoid transporting already archived six-hour captures
+        id: capture-needed
+        if: always()
+        run: python -m scripts.archive_transport needs-upload
+      - name: Transport original responses to durable archive job
+        id: capture-upload
+        if: always() && steps.capture-needed.outputs.needed == 'true'
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: forecast-${{ github.run_id }}
-          path: site/data/latest.json
-          retention-days: 90
+          name: science-capture-${{ github.run_id }}
+          path: runtime/captures
+          retention-days: 7
           if-no-files-found: error
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v4
+      - name: Surface transport failure without blocking Pages
+        if: always() && steps.capture-upload.outcome == 'failure'
+        run: echo '::warning::Scientific capture transport failed. Previous permanent archive remains intact.'
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: site
+
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-26.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
       - name: Publish GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+
+  archive:
+    needs: build
+    if: always() && github.ref == 'refs/heads/main' && needs.build.outputs.capture_artifact != ''
+    runs-on: ubuntu-26.04
+    timeout-minutes: 25
+    permissions:
+      contents: write
+      actions: read
+    concurrency:
+      group: weather-archive-writer
+      cancel-in-progress: false
+      queue: max
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements-science.txt
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: science-capture-${{ github.run_id }}
+          path: runtime/captures
+      - name: Archive first successful capture per six-hour UTC slot
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AI_PROVIDER: none
+          AI_ENABLE: '0'
+          AI_ALLOW_PAID: '0'
+        run: python -m scripts.archive_git --push

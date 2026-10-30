@@ -1,0 +1,116 @@
+{
+  "observed_at": "2026-10-29",
+  "branch": [
+    {
+      "name": "feature/v2.2-ciencia-e-rastreabilidade",
+      "commit": {
+        "sha": "bcdde96514bb4731ce3f32cbde0366a79a624cdf",
+        "url": "https://api.github.com/repos/joaolorencone-unesp/campo-e-clima/commits/bcdde96514bb4731ce3f32cbde0366a79a624cdf"
+      },
+      "protected": false
+    },
+    {
+      "name": "main",
+      "commit": {
+        "sha": "e1241e208033baf3260d86c8ba4b03e56ba92300",
+        "url": "https://api.github.com/repos/joaolorencone-unesp/campo-e-clima/commits/e1241e208033baf3260d86c8ba4b03e56ba92300"
+      },
+      "protected": false
+    }
+  ],
+  "runs": [
+    {
+      "id": 40937482568,
+      "name": "Offline integration checks",
+      "sha": "bcdde96514bb4731ce3f32cbde0366a79a624cdf",
+      "event": "pull_request",
+      "conclusion": "success",
+      "updated": "2026-10-29T19:09:55Z"
+    },
+    {
+      "id": 40937422296,
+      "name": "Offline integration checks",
+      "sha": "bcdde96514bb4731ce3f32cbde0366a79a624cdf",
+      "event": "push",
+      "conclusion": "success",
+      "updated": "2026-10-29T19:09:27Z"
+    },
+    {
+      "id": 40902392569,
+      "name": "Collect and deploy Campo e Clima",
+      "sha": "e1241e208033baf3260d86c8ba4b03e56ba92300",
+      "event": "schedule",
+      "conclusion": "success",
+      "updated": "2026-10-29T15:34:40Z"
+    },
+    {
+      "id": 40841772568,
+      "name": "Collect and deploy Campo e Clima",
+      "sha": "e1241e208033baf3260d86c8ba4b03e56ba92300",
+      "event": "schedule",
+      "conclusion": "success",
+      "updated": "2026-10-29T08:27:15Z"
+    },
+    {
+      "id": 40802403312,
+      "name": "Collect and deploy Campo e Clima",
+      "sha": "e1241e208033baf3260d86c8ba4b03e56ba92300",
+      "event": "schedule",
+      "conclusion": "success",
+      "updated": "2026-10-29T01:49:18Z"
+    },
+    {
+      "id": 40800818982,
+      "name": "Collect and deploy Campo e Clima",
+      "sha": "e1241e208033baf3260d86c8ba4b03e56ba92300",
+      "event": "push",
+      "conclusion": "success",
+      "updated": "2026-10-29T01:33:40Z"
+    },
+    {
+      "id": 40788168078,
+      "name": "Collect and deploy Campo e Clima",
+      "sha": "d8eec0cf180134104fdd2a25bc6db91fe546fd3e",
+      "event": "push",
+      "conclusion": "success",
+      "updated": "2026-10-28T23:36:34Z"
+    },
+    {
+      "id": 40775579060,
+      "name": "Collect and deploy Campo e Clima",
+      "sha": "f988000462f6a9104e5a570d36d7bcea36415829",
+      "event": "schedule",
+      "conclusion": "success",
+      "updated": "2026-10-28T21:56:18Z"
+    }
+  ],
+  "warnings": [
+    "Node 20 actions forced to Node 24",
+    "ubuntu-latest migration to Ubuntu 26"
+  ],
+  "build_log": [
+    "2026-10-29T15:31:24.1569170Z Image: ubuntu-26.04",
+    "2026-10-29T15:31:28.2370362Z (node:2378) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.",
+    "2026-10-29T15:31:38.7690325Z (node:2471) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.",
+    "2026-10-29T15:31:39.0306685Z Cache hit for: slow-sources-v13-2026-10-29",
+    "2026-10-29T15:31:39.0428846Z (node:2471) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.",
+    "2026-10-29T15:31:39.5694547Z (node:2490) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.",
+    "2026-10-29T15:31:39.8167686Z Cache hit for: seasonal-v13-2026-W44",
+    "2026-10-29T15:31:39.8285871Z (node:2490) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.",
+    "2026-10-29T15:31:40.3098130Z (node:2510) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.",
+    "2026-10-29T15:31:40.5711965Z Cache hit for: climate-era5-land-v08-2026-10",
+    "2026-10-29T15:31:40.5861149Z (node:2510) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.",
+    "2026-10-29T15:34:21.4756379Z Wrote site/data/latest.json ; deterministic: True ; ensemble models: 6",
+    "2026-10-29T15:34:23.1305627Z (node:2568) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.",
+    "2026-10-29T15:34:23.3885166Z Cache hit for: history-navirai-v19-2026-10-29",
+    "2026-10-29T15:34:23.4065236Z (node:2568) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.",
+    "2026-10-29T15:34:24.1482649Z (node:2589) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.",
+    "2026-10-29T15:34:24.6078050Z (node:2589) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.",
+    "2026-10-29T15:34:26.2506720Z (node:2616) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead."
+  ],
+  "ci_log": [
+    "2026-10-29T19:09:26.9344026Z Image: ubuntu-26.04",
+    "2026-10-29T19:09:28.9781050Z Successfully set up CPython (3.11.17)",
+    "2026-10-29T19:09:49.8734188Z 152 passed in 3.65s"
+  ]
+}

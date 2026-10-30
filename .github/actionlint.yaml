@@ -1,0 +1,5 @@
+# GitHub-hosted image observed in the existing successful CI and Pages runs.
+# actionlint 1.7.12 predates this hosted label; this only extends its known labels.
+self-hosted-runner:
+  labels:
+    - ubuntu-26.04

@@ -23,6 +23,7 @@
   function clear(id,msg){const x=$(id);if(!x)return;if(window.Plotly&&x.classList.contains('js-plotly-plot'))try{Plotly.purge(x);}catch(_){}x.textContent=msg;x.classList.add('is-empty');}
   function plot(id,traces,yUnit){const x=$(id);if(!x)return;
     if(!window.Plotly||!traces.length){clear(id,'Gráfico indisponível; informações no resumo.');return;}
+    if(!x.classList.contains('js-plotly-plot'))x.textContent='';
     x.classList.remove('is-empty');Plotly.react(x,traces,{height:315,margin:{l:60,r:35,t:20,b:65},
       xaxis:{type:'category',title:'Período (início)',tickangle:-35},yaxis:{title:yUnit,rangemode:'tozero'},
       legend:{orientation:'h',y:-.28},paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)'},{responsive:true,displaylogo:false});
@@ -50,7 +51,7 @@
       }
       if(gefs.state==='ok'&&Array.isArray(gefs.days)&&gefs.days.length){
         const days=gefs.days.filter(d=>finite(d.p50_mm));
-        $('extended-gefs-status').textContent=`✓ NOAA GEFS estendido: ${days.length} dias entre D15–D35, ${gefs.member_count} membros de UM modelo (não multimodelo). Coleta ${gefs.queried_at_utc||'sem horário'} UTC. Frequências NÃO calibradas.`;
+        $('extended-gefs-status').textContent=`✓ NOAA GEFS estendido: ${days.length} dias entre D15–D35, ${gefs.member_count} membros de UM modelo (não multimodelo). Coleta ${gefs.collected_at_utc||gefs.queried_at_utc||'sem horário'}. Frequências NÃO calibradas.`;
         plot('extended-gefs-plot',[
          {type:'scatter',mode:'lines',x:days.map(d=>d.date),y:days.map(d=>d.p10_mm),name:'P10',line:{color:'#accdde'}},
          {type:'scatter',mode:'lines',x:days.map(d=>d.date),y:days.map(d=>d.p90_mm),name:'P90',fill:'tonexty',fillcolor:'rgba(25,122,176,.17)',line:{color:'#85b9d8'}},

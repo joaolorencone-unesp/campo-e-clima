@@ -134,3 +134,7 @@
 @media(max-width:650px){.agro-settings,.agro-plan-grid,.agro-kpis,.agro-insights{grid-template-columns:1fr}.agro-hero{background:white}.agro-kpi{min-height:85px}}
 .agro-hours-table{border-collapse:separate;border-spacing:0}.agro-hours-table thead th{position:sticky;top:0;background:#eaf3f8;z-index:2}
 .agro-details .scroll:has(.agro-hours-table){max-height:445px;overflow:auto}
+
+.precision-filters{flex-wrap:wrap}.precision-filters label{min-width:145px}#precision-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:16px 0}#precision .plot{min-height:260px}#precision .caption{overflow-wrap:anywhere}
+
+.precision-filters input[type=date]{width:100%;box-sizing:border-box;min-height:42px;padding:9px 12px;border:1px solid #bdd5e4;border-radius:8px;color:#164565;font:inherit;background:#fff}

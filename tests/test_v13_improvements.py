@@ -110,8 +110,8 @@ def test_full_collector_partial_timeout_fallback(tmp_path,monkeypatch):
     result=json.loads(target.read_text())
     m=result['ensemble_models']['Exemplo de teste']
     assert m['fallback_short_horizon'] is True
-    assert m['coverage_days']==4
+    assert m['coverage_days']==3  # Fourth day lacks next midnight: precipitation is interval-ending
     assert m['precipitation_members']==2
-    assert len(result['rain_ensemble_daily'])==4
+    assert len(result['rain_ensemble_daily'])==3
     assert len([r for _,r in calls if r.get('forecast_days')==4])==1 # rain fallback only
     assert len([r for _,r in calls if r.get('forecast_hours')==80])==1 # spray begins from current hour

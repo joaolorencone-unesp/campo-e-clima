@@ -1,0 +1,35 @@
+frontend_smoke.cjs
+PASS: consulta determinística direta, atualização real e validação de fuso.
+
+test_agro_cockpit_v21.cjs
+PASS Central Agro v2.1: forward rain, missing data, coordinate validation, past-days labels, tech checklist and markup
+
+test_custom_ensemble_v15.cjs
+PASS custom coordinate ensembles: staged 7-day rain, partial model success, HTTP 429 stop, 4-day fallback, valid-only checks
+
+test_forward_browser_v18.cjs
+PASS v1.8: actual future 72 hours, forward precipitation timing, valid members, independent operational uncertainty.
+
+test_history_v10.cjs
+PASS v1.0: UTC history, daily series, NASA/ERA5 pairing, daytime meteorological screening, station distance.
+
+test_location_client.cjs
+PASS coordinate bounds, NASA missingness, ensemble weighting, joint 2h spraying windows.
+
+test_maps_controls_v20.cjs
+PASS map v2.0 playback: timed steps, prefetch, independent source labels, UTC/local and dBZ legend
+
+test_maps_v14.cjs
+PASS maps v1.4: 9-point forecast, labels, non-fabrication and wind transport directions.
+
+test_precision_v22.cjs
+PASS precision v2.2: weighted period aggregation, missing pairs, circular bias. Synthetic fixtures only in test.
+
+test_rain_scenarios_v16.cjs
+PASS: exclusive bands, missing data, model agreement, UI thresholds, both collectors
+
+test_ux_v19.cjs
+PASS v1.9: grouped alerts, official source display, observed radar manifest validation
+
+test_v12_browser.cjs
+PASS v1.2: no fabricated rain, strict hourly/daily alignment, dynamic long-range with units.

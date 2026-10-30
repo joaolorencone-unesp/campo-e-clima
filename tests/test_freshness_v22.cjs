@@ -1,0 +1,11 @@
+'use strict';
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const source=fs.readFileSync('site/static/app.js','utf8');
+const code=source.slice(source.indexOf('function statusBar(){'),source.indexOf('function metric('));
+const elements={};const el=id=>elements[id]??={classList:{toggle(){}},textContent:'',innerHTML:''};
+const ctx={Date,Number,Object,Math,$:el,activeTZ:()=> 'America/Campo_Grande',state:{issued_at_utc:new Date().toISOString(),site:{},ensemble_models:{GFS:{state:'ok',precipitation_members:30,collected_at_utc:new Date(Date.now()-6*3600000).toISOString()}}}};
+vm.createContext(ctx);vm.runInContext(code,ctx);
+assert.equal(ctx.statusBar().stale,true);assert.match(el('status').innerHTML,/desatualizadas/);
+ctx.state.ensemble_models.GFS.collected_at_utc=new Date().toISOString();assert.equal(ctx.statusBar().stale,false);
+delete ctx.state.ensemble_models.GFS.collected_at_utc;assert.equal(ctx.statusBar().stale,true);
+console.log('PASS: ensemble age follows acquisition, not publication; missing timestamp remains unknown.');

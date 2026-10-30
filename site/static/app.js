@@ -72,14 +72,17 @@ function tableHead(titles){return '<thead><tr>'+titles.map(x=>`<th>${esc(x)}</th
 function tableFill(id,titles,rows,empty='Sem dados válidos para esta seção.'){$(id).innerHTML=tableHead(titles)+'<tbody>'+(rows.length?rows.join(''):`<tr><td colspan="${titles.length}" class="na">${esc(empty)}</td></tr>` )+'</tbody>';}
 const cell=(x,cls='',d=1)=>`<td class="${cls}">${fmt(x,d)}</td>`;
 function statusBar(){
- const issued=state?.issued_at_utc;
+ const validModels=Object.values(state?.ensemble_models||{}).filter(x=>x.state==='ok'&&x.precipitation_members>0);
+ const acquired=validModels.map(x=>Date.parse(x.collected_at_utc));
+ const hasTimes=acquired.length>0&&acquired.every(Number.isFinite);
+ const issued=hasTimes?new Date(Math.min(...acquired)).toISOString():(validModels.length?null:state?.issued_at_utc);
  const emission=issued?new Date(issued):null;
  const age=emission && Number.isFinite(emission.getTime())?Math.round((Date.now()-emission.getTime())/60000):null;
  const stale=age===null||age<0||age>90;
  const liveDate=state?._liveForecastAt?new Date(state._liveForecastAt):null;
  const liveFresh=liveDate && Number.isFinite(liveDate.getTime()) && Date.now()-liveDate.getTime()<90*60000;
  const issuedText=emission?emission.toLocaleString('pt-BR',{timeZone:activeTZ(),dateStyle:'short',timeStyle:'short'}):'não registrada';
- $('last-updated').textContent=`${state?.site?.custom?'Consulta do ponto':'Ensembles'}: ${issuedText} (horário local do ponto)`;
+ $('last-updated').textContent=`${state?.site?.custom?'Consulta do ponto':'Ensembles — coleta mais antiga em uso'}: ${issuedText} (horário local do ponto)`;
  const modelOK=Object.values(state?.ensemble_models||{}).filter(x=>x.state==='ok'&&x.precipitation_members>0).length;
  const gustOK=Object.values(state?.ensemble_models||{}).filter(x=>x.gust_members>0).length;
  const forecastText=liveFresh?`Previsão determinística consultada diretamente às ${liveDate.toLocaleTimeString('pt-BR',{timeZone:activeTZ(),hour:'2-digit',minute:'2-digit'})}. `:'';
