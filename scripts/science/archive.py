@@ -56,13 +56,53 @@ def archive_capture(capture_dir, archive_root, *, force_slot=None):
     if target.exists():
         verify_manifest(archive_root,target)
         return {'state':'already_archived','manifest':name}
+    # Validate the ORIGINAL capture before changing any reference. A raw-content
+    # address can be shared by different, equally valid gzip representations
+    # (for example the OS header is 0x03 on Python 3.11 and 0xff on 3.13).
     entries=referenced(manifest)
-    unique={x['relative_path']:x for x in entries}
-    for entry in unique.values():
+    incoming={}
+    for entry in entries:
+        rel=entry['relative_path']
         checked_object(capture_dir,entry)
-    size=sum((capture_dir/x).stat().st_size for x in unique)
+        if rel in incoming and incoming[rel]['gzip_sha256']!=entry['gzip_sha256']:
+            raise ValueError('Mesmo caminho RAW com GZIP inconsistente na captura')
+        incoming[rel]=entry
+
+    # NEVER overwrite a historical object: its hash is still used by earlier
+    # immutable manifests. If compressed bytes differ for the same raw content,
+    # preserve the new original gzip under an additional content-addressed path.
+    # Only relative_path changes in the new *archived* manifest, and the
+    # unmodified capture artifact remains the provenance of the source bytes.
+    resolved={}
+    for rel,entry in incoming.items():
+        dest=archive_root/rel
+        actual=rel
+        if dest.exists():
+            existing_gzip_sha=digest(dest.read_bytes())
+            if existing_gzip_sha==entry['gzip_sha256']:
+                checked_object(archive_root,entry)
+            else:
+                # Require the old object to contain the very same RAW content.
+                # If it does not, stop: this is a genuine archive corruption.
+                checked_object(archive_root,{**entry,'gzip_sha256':existing_gzip_sha})
+                variant=f"{entry['raw_sha256']}-{entry['gzip_sha256']}.json.gz"
+                actual=f"objects/{entry['raw_sha256'][:2]}/{variant}"
+                candidate={**entry,'relative_path':actual}
+                if (archive_root/actual).exists():
+                    checked_object(archive_root,candidate)
+        resolved[rel]=actual
+
+    for entry in entries:
+        previous=entry['relative_path']
+        if resolved[previous]!=previous:
+            entry['capture_relative_path']=previous
+            entry['relative_path']=resolved[previous]
+
+    unique={e['relative_path']:e for e in entries}
+    source_for={new:old for old,new in resolved.items()}
+    size=sum((capture_dir/old).stat().st_size for old in resolved)
     existing=sum(p.stat().st_size for p in archive_root.rglob('*') if p.is_file() and '.git' not in p.parts) if archive_root.exists() else 0
-    new_size=sum((capture_dir/x).stat().st_size for x in unique if not (archive_root/x).exists())
+    new_size=sum((capture_dir/old).stat().st_size for old,new in resolved.items() if not (archive_root/new).exists())
     limits=config()
     if (archive_root/'.git').exists():
         from .storage import inventory
@@ -76,7 +116,8 @@ def archive_capture(capture_dir, archive_root, *, force_slot=None):
         if dest.exists():
             checked_object(archive_root,entry)
         else:
-            atomic(dest,(capture_dir/rel).read_bytes())
+            atomic(dest,(capture_dir/source_for[rel]).read_bytes())
+            checked_object(archive_root,entry)
     # Manifest is the commit marker. Objects without a manifest are ignored during replay.
     atomic(target,packed(manifest))
     atomic(target.with_suffix('.sha256'),digest(packed(manifest)).encode())

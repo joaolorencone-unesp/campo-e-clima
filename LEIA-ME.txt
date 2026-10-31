@@ -1,0 +1,58 @@
+CORREÇÃO CAMPO E CLIMA V2.2 — GZIP DE ARQUIVOS COMPARTILHADOS
+===============================================================
+Diagnóstico da captura 41110236463 (30/10/2026):
+- ZIP íntegro: 42 arquivos (40 objetos GZIP, 2 manifestos).
+- Todos os objetos possuem SHA-256 GZIP, SHA-256 RAW e tamanho corretos.
+- Resposta HTTP 204 vazia da estação S735 aparece repetidamente.
+- O objeto RAW vazio e3b0c44298fc... foi registrado com duas versões GZIP.
+- O GZIP antigo possui SHA-256 9ceffb731033... e OS byte FF.
+- A nova captura possui SHA-256 f61f27bd17de... e OS byte 03.
+- Ambos descompactam para b''; não há dados de chuva/temperatura perdidos.
+
+ALTERAÇÃO DE CÓDIGO
+------------------
+Arquivo modificado: scripts/science/archive.py
+Teste novo: tests/test_archive_gzip_variants_v22.py
+
+Quando um objeto RAW já existe, mas a representação GZIP difere:
+1. O código valida o objeto novo e confirma que o antigo contém o mesmo RAW.
+2. Não altera nem substitui o objeto antigo ou manifestos antigos.
+3. Preserva o GZIP novo em um nome com SHA-256 RAW e SHA-256 GZIP.
+4. Ajusta somente o caminho no NOVO manifesto arquivado, mantendo
+   capture_relative_path e os hashes originais para rastreabilidade.
+5. Garante idempotência da captura repetida e mantém erros para corrupção REAL.
+
+RESULTADOS LOCAIS
+-----------------
+- Reprodução offline com o ZIP real + arquivo GZIP antigo: APROVADA.
+- Naviraí: arquivamento, validação do novo manifesto e repetição: APROVADOS.
+- Diamantino: arquivamento e validação de manifesto: APROVADOS.
+- Testes novos: 2 aprovados.
+- Suíte local selecionada: 17 aprovados; 1 teste de configuração de workflow
+  não executado nesta cópia parcial, por não ter os arquivos .github.
+- Não foi executado CI remoto, push, merge ou deploy.
+
+INSTALAÇÃO SEGURA PELO GITHUB DESKTOP
+------------------------------------
+1. NÃO modifique weather-archive, NÃO faça force-push nem importe ZIP
+   diretamente nessa branch.
+2. GitHub Desktop: escolha o repositório campo-e-clima; Fetch origin.
+3. Se não houver alterações locais, escolha main e clique Pull origin (se aparecer).
+4. Crie nova branch a partir de main: fix/archive-gzip-collision-v22.
+5. Abra Show in Explorer; substitua APENAS scripts/science/archive.py
+   pelo arquivo deste pacote, mantendo a pasta correta.
+6. Copie o arquivo de teste para tests/test_archive_gzip_variants_v22.py.
+7. Confira '2 changed files', commit e Push origin.
+8. Crie um Pull Request para main. Confira os testes Python 3.11/3.13.
+9. Somente após revisão, integre a correção e valide o job archive.
+10. Para recuperar a captura #40, use a rotina de recuperação MANUAL
+    já configurada, selecionando a run 41110236463, depois de confirmar
+    a correção e as permissões. Não restaure até passar a nova verificação.
+
+NOTAS
+-----
+A correção não muda o tempo de atualização dos ensembles. Ainda é preciso
+monitorar a frequência dos schedules separadamente.
+A correção não altera schemas SQLite/Parquet nem a branch weather-archive
+até uma futura execução autorizada de arquivamento.
+Não excluir os ZIPs das capturas anteriores: artifacts remotos expiram.
