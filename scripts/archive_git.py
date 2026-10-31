@@ -23,12 +23,19 @@ BRANCH='weather-archive'
 
 def git(root,*args,check=True):
     env=os.environ.copy()
+    command=['git','-C',str(root),*args]
     # Token stays in the subprocess environment, never in URL, files or printed args.
     token=env.get('GH_TOKEN')
     if token:
         auth=base64.b64encode(('x-access-token:'+token).encode()).decode()
         env.update(GIT_CONFIG_COUNT='1',GIT_CONFIG_KEY_0='http.https://github.com/.extraheader',GIT_CONFIG_VALUE_0='AUTHORIZATION: basic '+auth)
-    return subprocess.run(['git','-C',str(root),*args],env=env,text=True,capture_output=True,check=check)
+    result=subprocess.run(command,env=env,text=True,capture_output=True,check=False)
+    if token and args and args[0]=='ls-remote' and result.returncode:
+        # Public refs can still be discovered without token auth when transient auth errors occur.
+        result=subprocess.run(command,env=os.environ.copy(),text=True,capture_output=True,check=False)
+    if check:
+        result.check_returncode()
+    return result
 
 def prepare(root):
     root=Path(root)
