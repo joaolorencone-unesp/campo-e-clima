@@ -13,13 +13,13 @@ def referenced(manifest):
     return [x for x in manifest.get('requests',[]) + [manifest.get('public_snapshot',{})]
             if x.get('relative_path')]
 
-def checked_object(root, entry):
+def checked_object(root, entry, *, strict_gzip=True):
     root=Path(root).resolve()
     path=(root/entry['relative_path']).resolve()
     if not path.is_relative_to(root) or path.suffix!='.gz' or path.is_symlink():
         raise ValueError('Caminho inseguro no manifesto')
     compressed=path.read_bytes()
-    if digest(compressed)!=entry['gzip_sha256']:
+    if strict_gzip and digest(compressed)!=entry['gzip_sha256']:
         raise ValueError('SHA-256 gzip divergente')
     with gzip.open(path,'rb') as stream:
         body=stream.read(100_000_001)
@@ -74,7 +74,14 @@ def archive_capture(capture_dir, archive_root, *, force_slot=None):
     for rel,entry in unique.items():
         dest=archive_root/rel
         if dest.exists():
-            checked_object(archive_root,entry)
+            try:
+                checked_object(archive_root,entry)
+            except ValueError as exc:
+                if 'SHA-256 gzip divergente' not in str(exc):
+                    raise
+                # Legacy objects may have different gzip bytes for the same RAW payload.
+                checked_object(archive_root,entry,strict_gzip=False)
+                entry['gzip_sha256']=digest(dest.read_bytes())
         else:
             atomic(dest,(capture_dir/rel).read_bytes())
     # Manifest is the commit marker. Objects without a manifest are ignored during replay.
