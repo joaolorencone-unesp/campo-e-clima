@@ -115,6 +115,22 @@ def test_archive_hash_corruption_and_safe_restore(tmp_path):
     with pytest.raises(FileExistsError):rebuild(root,existing)
     assert existing.read_text()=='original'
 
+def test_archive_accepts_legacy_gzip_when_raw_matches(tmp_path):
+    cap,payload,event=fixture_capture(tmp_path)
+    entry=cap.manifest['requests'][0]
+    obj=cap.root/entry['relative_path']
+    raw=gzip.decompress(obj.read_bytes())
+    legacy=gzip.compress(raw,compresslevel=9,mtime=1)
+    obj.write_bytes(legacy)
+    entry['gzip_sha256']=digest(legacy)
+    cap.flush()
+    archive=tmp_path/'archive'
+    archive_capture(cap.root,archive)
+    cap2=Capture(tmp_path/'capture2','navirai',execution_id='synthetic-test-2',collected_at='2026-01-01T06:00:00Z')
+    cap2.record(event['source_url'],event['params'],content=packed(payload),status=200,product=event['product'])
+    cap2.finish()
+    assert archive_capture(cap2.root,archive)['state']=='archived'
+
 def test_archive_rejects_traversal_and_no_success(tmp_path):
     cap,_,_=fixture_capture(tmp_path)
     cap.manifest['requests'][0]['relative_path']='../outside.gz';cap.flush()
