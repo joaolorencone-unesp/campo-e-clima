@@ -1,0 +1,18 @@
+'use strict';
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const code=fs.readFileSync('site/static/agro_ensemble_v23.js','utf8');
+const ctx={window:{},Date,Math,Number,Object,Set,Map,Intl};vm.createContext(ctx);vm.runInContext(code,ctx);
+const agro=ctx.window.CampoAgroWeather;
+const times=['2026-11-04T14:00','2026-11-04T15:00'];
+const p={utc_offset_seconds:-14400,hourly:{time:times,temperature_2m_member01:[28,28],relative_humidity_2m_member01:[50,50],wind_gusts_10m_member01:[23,25],wind_speed_10m_member01:[7,8],temperature_2m_member02:[30,30],relative_humidity_2m_member02:[null,null]}};
+let first=agro.samples(p,Date.parse('2026-11-04T17:00:00Z'));
+assert.equal(Object.keys(first).length,2);
+assert.equal(first[times[0]].vpd_kpa.length,1,'VPD paired, no missing RH as zero');
+assert.ok(Math.abs(first[times[0]].vpd_kpa[0]-1.889)<.003);
+let second=agro.samples({...p,hourly:{...p.hourly,wind_gusts_10m_member01:[32,32] }},Date.parse('2026-11-04T17:00:00Z'));
+const b=agro.blend({a:first,b:second});
+assert.equal(b[0].variables.wind_gusts_10m.model_count,2);
+assert.ok(Math.abs(b[0].variables.wind_gusts_10m.p_gt_30-.5)<1e-6);
+assert.equal(b[0].variables.temperature_2m.member_count,4);
+assert.equal(agro.blend({a:{}}).length,0);
+console.log('PASS: Agro ensemble members, VPD pairing and model weighting');

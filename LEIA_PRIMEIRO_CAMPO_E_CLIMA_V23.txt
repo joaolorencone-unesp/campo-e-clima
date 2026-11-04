@@ -1,0 +1,44 @@
+CAMPO E CLIMA - ENSAIO DE ENSEMBLES AGROMETEOROLOGICOS V2.3
+
+INSTALACAO SIMPLES (Windows + GitHub Desktop)
+
+1. NO GITHUB DESKTOP, abra campo-e-clima, selecione main e atualize com Fetch/Pull origin.
+   Confira que NAO ha arquivos modificados (0 changed files).
+2. Clique Current branch > New branch e crie:
+   feature/agro-ensembles-v23
+   Base: main. Nao selecione weather-archive.
+3. Extraia este ZIP inteiro. Duplo clique em INSTALAR_CORRECAO_WINDOWS.bat.
+   Se aparecer a janela de pasta, selecione a pasta campo-e-clima conectada ao GitHub Desktop
+   (normalmente abra Show in Explorer e copie o caminho da barra).
+4. Se aparecer 'SUCESSO', abra GitHub Desktop e veja os nove arquivos alterados/adicionados.
+   NAO clique em Commit ou Push se a tela mostrar algo inesperado.
+5. Para verificar localmente, abra o terminal na raiz do repositorio:
+   python -m pytest -q tests/test_agro_ensemble_v23.py
+   node tests/test_agro_ensemble_v23.cjs
+   node --check site/static/location.js
+   A suite CI sera executada tambem ao criar o PR (Python 3.11/3.13 e JS).
+6. Depois: Commit, Push origin e Pull Request para main (NÃO merge sem CI verde).
+
+O INSTALADOR NAO usa a internet e NAO executa git push, merge ou deploy.
+Ele nao substitui dados historicos nem altera a branch weather-archive.
+Se o codigo da sua branch for diferente da versao verificada, o instalador interrompe
+sem alterar arquivos. Basta compartilhar a mensagem de erro para adaptar a versao.
+
+ALTERACOES:
+- Reaproveita as respostas conjuntas de 6 variaveis ja buscadas na coleta automatica
+  para criar agregados horarios dos ensembles: T, UR, VPD, vento e rajadas.
+- VPD deriva somente da temperatura e UR do mesmo membro e horario (FAO-56).
+- P10/P50/P90 e frequencias com pesos iguais por modelo (nao calibradas).
+- Para pontos personalizados, consulta as variaveis adicionais em segundo plano
+  para 3 modelos prioritarios. Oito modelos continuam inicialmente consultados para chuva.
+- Reduz cache do ensemble automatizado de 6 para 3 horas, preservando horario original
+  da aquisicao. O agendamento do GitHub continua 30 minutos (sem garantia de pontualidade).
+- Mostra novo painel agrometeorologico com numero de modelos validos por variavel.
+
+LIMITACOES:
+- Sem dado nao significa 0. Umidade, rajadas e VPD so aparecem quando ha membros validos.
+- Os ensembles podem nao atualizar a cada 30 min (rodadas proprias e API/cota gratuita).
+- O Codigo nao faz nova consulta remota neste ambiente de testes; teste real apos PR.
+- Limiares de risco sao apenas exploratorios, nao aprovam pulverizacao com drones.
+- Ainda precisamos futuramente avaliar ET0, radiacao, estresse hidrico e observacoes
+  de campo para calibracao. Nada foi calibrado nesta correcao.

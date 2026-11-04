@@ -1,0 +1,86 @@
+{
+  "version": "2026-11-04-v23",
+  "patches": [
+    {
+      "path": "scripts/collect.py",
+      "edits": [
+        {
+          "old": "from typing import Any\nimport requests\ntry:\n    from scripts.sources.gefs_extended import collect_gefs_extended\n",
+          "new": "from typing import Any\nimport requests\nfrom scripts.agro_ensemble import model_samples as agro_model_samples, blend_samples as agro_blend_samples\ntry:\n    from scripts.sources.gefs_extended import collect_gefs_extended\n"
+        },
+        {
+          "old": "             'methodology': 'Equal total weight per valid ensemble model; uncalibrated member frequencies; forward 1/3/6h totals from joint member trajectories; interpolated hourly grids not independent measurements',\n             'sources': {}, 'deterministic': None, 'rain_ensemble_daily': [], 'gust_ensemble_daily': [], 'rain_ensemble_hourly': [], 'rain_models_daily': [], 'ensemble_models': {},\n             'spray_joint_hourly': [], 'spray_joint_windows_2h': [], 'spray_joint_model_status': {},\n             'hourly_forecast_start_local':hourly_start, 'warnings': []}\n    try:\n",
+          "new": "             'methodology': 'Equal total weight per valid ensemble model; uncalibrated member frequencies; forward 1/3/6h totals from joint member trajectories; interpolated hourly grids not independent measurements',\n             'sources': {}, 'deterministic': None, 'rain_ensemble_daily': [], 'gust_ensemble_daily': [], 'rain_ensemble_hourly': [], 'rain_models_daily': [], 'ensemble_models': {},\n             'spray_joint_hourly': [], 'spray_joint_windows_2h': [], 'spray_joint_model_status': {}, 'agro_ensemble_hourly': [],\n             'hourly_forecast_start_local':hourly_start, 'warnings': []}\n    try:\n"
+        },
+        {
+          "old": "    by_model_gust = {}\n    by_model_spray = {}\n    for name, code in MODELS.items():\n        try:\n",
+          "new": "    by_model_gust = {}\n    by_model_spray = {}\n    by_model_agro = {}\n    for name, code in MODELS.items():\n        try:\n"
+        },
+        {
+          "old": "                spray = fetch(ENSEMBLE_URL, {**spray_params, 'models': code})\n                joint = read_joint_members(spray, future_start=hourly_start)\n                result['spray_joint_model_status'][name] = {\n                    'member_fields_complete':joint['members_available'],\n",
+          "new": "                spray = fetch(ENSEMBLE_URL, {**spray_params, 'models': code})\n                joint = read_joint_members(spray, future_start=hourly_start)\n                by_model_agro[name] = agro_model_samples(spray, future_start=hourly_start)\n                result['spray_joint_model_status'][name] = {\n                    'member_fields_complete':joint['members_available'],\n"
+        },
+        {
+          "old": "    result['rain_models_daily'] = rain_models_comparison(by_model)\n    result['gust_ensemble_daily'] = mix_gust_days(by_model_gust)\n    result['spray_joint_hourly'] = mix_joint_hourly(by_model_spray)\n    result['spray_joint_windows_2h'] = mix_joint_windows2h(by_model_spray)\n",
+          "new": "    result['rain_models_daily'] = rain_models_comparison(by_model)\n    result['gust_ensemble_daily'] = mix_gust_days(by_model_gust)\n    result['agro_ensemble_hourly'] = agro_blend_samples(by_model_agro)\n    result['spray_joint_hourly'] = mix_joint_hourly(by_model_spray)\n    result['spray_joint_windows_2h'] = mix_joint_windows2h(by_model_spray)\n"
+        }
+      ]
+    },
+    {
+      "path": "scripts/science_cli.py",
+      "edits": [
+        {
+          "old": "            else:collector.validate_forecast(payload)\n        product='extended_ensemble' if params.get('daily') and 'ensemble-api.' in url else 'operational'\n        return client.get(url,params,ttl_hours=.45 if 'ensemble-api.' not in url else 6,validator=validate,product=product)\n    collector.fetch=fetch\n    official.http_json=lambda url,timeout=18: client.get(url,{},ttl_hours=0.45,product=\"official_response\")\n",
+          "new": "            else:collector.validate_forecast(payload)\n        product='extended_ensemble' if params.get('daily') and 'ensemble-api.' in url else 'operational'\n        return client.get(url,params,ttl_hours=.45 if 'ensemble-api.' not in url else 3,validator=validate,product=product)\n    collector.fetch=fetch\n    official.http_json=lambda url,timeout=18: client.get(url,{},ttl_hours=0.45,product=\"official_response\")\n"
+        }
+      ]
+    },
+    {
+      "path": "site/index.html",
+      "edits": [
+        {
+          "old": "<html lang=\"pt-BR\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"theme-color\" content=\"#f4f8fb\"><meta name=\"description\" content=\"Campo e Clima: previsão meteorológica e histórico NASA POWER por coordenadas geográficas, para o agro.\"><title>Campo e Clima • Qualquer coordenada</title><link rel=\"stylesheet\" href=\"static/styles.css?v=20\"><link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\">\n<script defer src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script>\n<script defer src=\"static/plotly.min.js\"></script><script defer src=\"static/alerts_v19.js?v=19\"></script><script defer src=\"static/history_auto_v19.js?v=19\"></script><script defer src=\"static/rain_scenarios.js?v=16\"></script><script defer src=\"static/app.js?v=19\"></script><script defer src=\"static/location.js?v=18\"></script><script defer src=\"static/history_v10.js?v=13\"></script><script defer src=\"static/extended_v12.js?v=19\"></script><script defer src=\"static/maps_v14.js?v=20\"></script><script defer src=\"static/agro_cockpit_v21.js?v=21\"></script><script defer src=\"static/precision_v22.js?v=22\"></script></head>\n<body>\n<header class=\"masthead\"><div class=\"wrap masthead-inner\"><div><span class=\"eyebrow\">AGROMETEOROLOGIA EXPERIMENTAL <span class=\"live-dot\">●</span> COORDENADAS PERSONALIZÁVEIS</span><h1>Campo <span>&</span> Clima</h1><p>Previsão multimodelo, cenários de chuva e planejamento de operações agrícolas</p><div class=\"coord\">23,065° S · 54,190° O · Horário local UTC−4</div></div><div class=\"head-controls\"><button id=\"refresh\" class=\"primary\">↻ Atualizar previsão agora</button><span id=\"last-updated\" class=\"last-updated\">Aguardando primeira leitura…</span><span id=\"refresh-feedback\" class=\"refresh-feedback\" aria-live=\"polite\">Ainda não foi solicitada atualização manual.</span><small>Para Naviraí, o botão consulta a previsão atual. Para outras coordenadas, consulta também ensembles diretamente no navegador. NASA POWER é histórico, não previsão.</small></div></div></header>\n",
+          "new": "<html lang=\"pt-BR\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"theme-color\" content=\"#f4f8fb\"><meta name=\"description\" content=\"Campo e Clima: previsão meteorológica e histórico NASA POWER por coordenadas geográficas, para o agro.\"><title>Campo e Clima • Qualquer coordenada</title><link rel=\"stylesheet\" href=\"static/styles.css?v=20\"><link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\">\n<script defer src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script>\n<script defer src=\"static/plotly.min.js\"></script><script defer src=\"static/alerts_v19.js?v=19\"></script><script defer src=\"static/history_auto_v19.js?v=19\"></script><script defer src=\"static/rain_scenarios.js?v=16\"></script><script defer src=\"static/agro_ensemble_v23.js?v=23\"></script><script defer src=\"static/app.js?v=19\"></script><script defer src=\"static/location.js?v=18\"></script><script defer src=\"static/history_v10.js?v=13\"></script><script defer src=\"static/extended_v12.js?v=19\"></script><script defer src=\"static/maps_v14.js?v=20\"></script><script defer src=\"static/agro_cockpit_v21.js?v=21\"></script><script defer src=\"static/precision_v22.js?v=22\"></script></head>\n<body>\n<header class=\"masthead\"><div class=\"wrap masthead-inner\"><div><span class=\"eyebrow\">AGROMETEOROLOGIA EXPERIMENTAL <span class=\"live-dot\">●</span> COORDENADAS PERSONALIZÁVEIS</span><h1>Campo <span>&</span> Clima</h1><p>Previsão multimodelo, cenários de chuva e planejamento de operações agrícolas</p><div class=\"coord\">23,065° S · 54,190° O · Horário local UTC−4</div></div><div class=\"head-controls\"><button id=\"refresh\" class=\"primary\">↻ Atualizar previsão agora</button><span id=\"last-updated\" class=\"last-updated\">Aguardando primeira leitura…</span><span id=\"refresh-feedback\" class=\"refresh-feedback\" aria-live=\"polite\">Ainda não foi solicitada atualização manual.</span><small>Para Naviraí, o botão consulta a previsão atual. Para outras coordenadas, consulta também ensembles diretamente no navegador. NASA POWER é histórico, não previsão.</small></div></div></header>\n"
+        }
+      ]
+    },
+    {
+      "path": "site/static/app.js",
+      "edits": [
+        {
+          "old": "  coverage.textContent=`Horizonte horário determinístico: ${idx.length} horas futuras (${deterministicWindow}). Chuva por ensembles: ${ensemble72.length} horários futuros com membros válidos. A série diária mantém dias completos; janelas horárias com dados faltantes não são completadas artificialmente. Horários locais do ponto.`;\n }\n const guards=[()=>renderOverview(idx),()=>renderRain(idx),()=>renderWind(idx),()=>renderSpray(idx),ensembleScreening,renderMachines,renderVerification,renderOfficial,renderExtras,renderFreeResearch,renderCalendar];\n for(const f of guards){try{f();}catch(err){console.error('Render failure',err);}}\n",
+          "new": "  coverage.textContent=`Horizonte horário determinístico: ${idx.length} horas futuras (${deterministicWindow}). Chuva por ensembles: ${ensemble72.length} horários futuros com membros válidos. A série diária mantém dias completos; janelas horárias com dados faltantes não são completadas artificialmente. Horários locais do ponto.`;\n }\n  if(window.CampoAgroWeather?.render)try{window.CampoAgroWeather.render(state);}catch(error){console.error('Agro ensemble render failed',error);}\n const guards=[()=>renderOverview(idx),()=>renderRain(idx),()=>renderWind(idx),()=>renderSpray(idx),ensembleScreening,renderMachines,renderVerification,renderOfficial,renderExtras,renderFreeResearch,renderCalendar];\n for(const f of guards){try{f();}catch(err){console.error('Render failure',err);}}\n"
+        }
+      ]
+    },
+    {
+      "path": "site/static/location.js",
+      "edits": [
+        {
+          "old": " sprayBusy=true;sprayRunKey=key;sprayLastAttempt={key,at:Date.now()};\n setEnsembleStatus('Ensembles de chuva disponíveis. Consultando separadamente as variáveis conjuntas de pulverização (somente modelos prioritários)…');\n const byModel={},statuses={},gusts={};\n try{\n  for(const name of SPRAY_PRIORITY){\n",
+          "new": " sprayBusy=true;sprayRunKey=key;sprayLastAttempt={key,at:Date.now()};\n setEnsembleStatus('Ensembles de chuva disponíveis. Consultando separadamente as variáveis conjuntas de pulverização (somente modelos prioritários)…');\n const byModel={},statuses={},gusts={},agroModels={};\n try{\n  for(const name of SPRAY_PRIORITY){\n"
+        },
+        {
+          "old": "    const payload=await getJSON(pars(OM_ENSEMBLE,params),27);\n    if(token!==generation)return;\n    const spray=readJoint(payload),computed=computeModel(payload);\n    if(Object.keys(spray.times).length){byModel[name]=spray;statuses[name]={status:'ok',member_fields_complete:spray.members_available};}\n",
+          "new": "    const payload=await getJSON(pars(OM_ENSEMBLE,params),27);\n    if(token!==generation)return;\n    if(window.CampoAgroWeather)agroModels[name]=window.CampoAgroWeather.samples(payload);\n    const spray=readJoint(payload),computed=computeModel(payload);\n    if(Object.keys(spray.times).length){byModel[name]=spray;statuses[name]={status:'ok',member_fields_complete:spray.members_available};}\n"
+        },
+        {
+          "old": "    state.spray_joint_windows_2h=mixJointEvent(byModel,'window');\n    state.spray_joint_model_status={...statuses};\n    if(Object.keys(gusts).length)state.gust_ensemble_daily=mix(gusts,mixGust);\n    render();\n",
+          "new": "    state.spray_joint_windows_2h=mixJointEvent(byModel,'window');\n    state.spray_joint_model_status={...statuses};\n    if(window.CampoAgroWeather){state.agro_ensemble_hourly=window.CampoAgroWeather.blend(agroModels);\n     if(ensembleCache.key===key&&ensembleCache.data)ensembleCache.data.agro_ensemble_hourly=state.agro_ensemble_hourly;}\n    if(Object.keys(gusts).length)state.gust_ensemble_daily=mix(gusts,mixGust);\n    render();\n"
+        },
+        {
+          "old": " schema_version:9,issued_at_utc:new Date().toISOString(),site:{latitude:point.latitude,longitude:point.longitude,timezone:forecast.timezone,custom:true},\n deterministic:forecast,rain_ensemble_daily:[],gust_ensemble_daily:[],rain_ensemble_hourly:[],rain_models_daily:[],ensemble_models:{},\n spray_joint_hourly:[],spray_joint_windows_2h:[],spray_joint_model_status:{},official:{},embrapa_observations:{state:'not_applicable'},\n complementary:{},sources:{'Open-Meteo Forecast':{state:'ok',source_url:'https://open-meteo.com/en/docs',collected_at_utc:forecast.collected_at_utc}},\n warnings:['Avisos oficiais e estação de Naviraí não se aplicam ao ponto selecionado.','Triagem por ensemble para pulverização não disponível neste modo; a avaliação determinística ainda exige validação local.'],\n",
+          "new": " schema_version:9,issued_at_utc:new Date().toISOString(),site:{latitude:point.latitude,longitude:point.longitude,timezone:forecast.timezone,custom:true},\n deterministic:forecast,rain_ensemble_daily:[],gust_ensemble_daily:[],rain_ensemble_hourly:[],rain_models_daily:[],ensemble_models:{},\n spray_joint_hourly:[],spray_joint_windows_2h:[],spray_joint_model_status:{},agro_ensemble_hourly:[],official:{},embrapa_observations:{state:'not_applicable'},\n complementary:{},sources:{'Open-Meteo Forecast':{state:'ok',source_url:'https://open-meteo.com/en/docs',collected_at_utc:forecast.collected_at_utc}},\n warnings:['Avisos oficiais e estação de Naviraí não se aplicam ao ponto selecionado.','Triagem por ensemble para pulverização não disponível neste modo; a avaliação determinística ainda exige validação local.'],\n"
+        },
+        {
+          "old": "   show(`✓ ${cachedCount} ensembles válidos para ${loc.name}, atualizados há ${mins} min.`,'good');\n   setRefreshFeedback(`✓ Previsão determinística atualizada. ${cachedCount} ensembles válidos em cache por ${mins} min.`,'good');\n   if(document.querySelector('#tabs button[data-tab=\"spray\"]')?.classList.contains('active') && !(state.spray_joint_hourly||[]).length){\n    void requestSprayEnsembles({...loc},token,key);\n   }\n   return;\n  }\n",
+          "new": "   show(`✓ ${cachedCount} ensembles válidos para ${loc.name}, atualizados há ${mins} min.`,'good');\n   setRefreshFeedback(`✓ Previsão determinística atualizada. ${cachedCount} ensembles válidos em cache por ${mins} min.`,'good');\n   if(!(state.agro_ensemble_hourly||[]).length)void requestSprayEnsembles({...loc},token,key);\n   return;\n  }\n"
+        },
+        {
+          "old": "  }\n  render();updateLocationUI();\n  if(n && token===generation && document.querySelector('#tabs button[data-tab=\"spray\"]')?.classList.contains('active'))void requestSprayEnsembles({...loc},token,key);\n\n }catch(e){if(token===generation){show('Falha na previsão: '+describeError(e),'error');setRefreshFeedback('⚠ '+describeError(e),'error');}}\n",
+          "new": "  }\n  render();updateLocationUI();\n  if(n && token===generation)void requestSprayEnsembles({...loc},token,key);\n\n }catch(e){if(token===generation){show('Falha na previsão: '+describeError(e),'error');setRefreshFeedback('⚠ '+describeError(e),'error');}}\n"
+        }
+      ]
+    }
+  ]
+}
