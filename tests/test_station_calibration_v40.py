@@ -92,7 +92,7 @@ def test_pipeline_recovers_known_bias_out_of_sample(tmp_path, monkeypatch):
     rain = next(v for v in navirai['verification'] if v['variable'] == 'rain_mm' and v['lead_days'] == 1 and v['model'] == 'modelo_a')
     assert rain['status'] in ('evaluated', 'insufficient_test_sample') and rain['raw_contingency'][0]['threshold_mm'] == 1
     embrapa = next(r for r in reports if r['station']['id'].startswith('EMBRAPA'))
-    assert embrapa['forecast_point']['source'] == 'municipal_reference_point' and embrapa['limitations'][0].startswith('Coordenadas')
+    assert embrapa['forecast_point']['source'] == 'station_coordinates' and abs(embrapa['forecast_point']['latitude'] + 23.0258) < 1e-3
     assert any(v['variable'] == 't_max' and v['status'] == 'evaluated' for v in embrapa['verification'])
     out = json.loads((tmp_path / 'out' / 'inmet_s735_navirai.json').read_text(encoding='utf-8'))
     assert out['series']['modelo_a']['dates'] and len(out['observations']['daily']) == navirai['observations']['daily_rows']

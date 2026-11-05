@@ -1,5 +1,10 @@
 # Changelog
 
+## 4.0.2 — coordenadas da estação Embrapa e cache de ensembles limitado a 4 h, 05/11/2026
+
+- `data/stations/stations.json`: coordenadas da estação Embrapa/IFMS Naviraí (−23,025843 / −54,189553) informadas pelo responsável; a verificação passa a consultar o ponto exato.
+- `scripts/science_cli.py`: o cache sensível à rodada reutiliza membros de ensemble por no máximo 4 h (antes 12 h) e ignora metadados de rodada com mais de 24 h. Causa observada em produção: o `meta.json` do ICON anunciava uma rodada de outubro e o do UKMO atrasava, mantendo membros de 7 h atrás na publicação das 12 h UTC.
+
 ## 4.0.1 — arquivo científico: manifestos com objeto repetido e contêiner gzip legado, 05/11/2026
 
 - `scripts/science/archive.py`: quando um objeto já existe no arquivo em um contêiner gzip diferente (mesmo RAW), todos os registros do manifesto que apontam para ele passam a receber o hash do contêiner mantido, e a verificação de manifestos aceita essa diferença de contêiner (o SHA-256 do RAW e o tamanho continuam estritos); objeto gzip ilegível vira `ValueError` explícito. Corrige a falha do job de arquivo após a integração da v4 (duas respostas INMET idênticas no mesmo manifesto) e destrava a reconstrução dos relatórios. Teste de regressão em `tests/test_science_v22.py`.
