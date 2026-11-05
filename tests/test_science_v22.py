@@ -361,3 +361,19 @@ def test_duplicate_events_with_a_legacy_archive_object_keep_the_manifest_consist
     assert all(e['gzip_sha256']==kept for e in manifest['requests'] if e.get('relative_path')==first['relative_path'])
     assert archive_capture(cap.root,archive)['state']=='already_archived'
     assert rebuild(archive,tmp_path/'rebuilt.sqlite')['integrity']=='ok'
+
+
+def test_rebuild_tolerates_manifest_recording_a_different_gzip_container(tmp_path):
+    """A manifest already on the archive branch may record the capture-time gzip hash while the
+    stored object is a legacy container with the same RAW bytes (regression: science run
+    42040222508, 05/11/2026). RAW hash and size remain strict; rebuild must succeed."""
+    cap,_,_=fixture_capture(tmp_path)
+    archive=tmp_path/'archive';result=archive_capture(cap.root,archive)
+    entry=cap.manifest['requests'][0];obj=archive/entry['relative_path']
+    raw=gzip.decompress(obj.read_bytes())
+    legacy=gzip.compress(raw,compresslevel=1,mtime=1700000000)
+    assert digest(legacy)!=entry['gzip_sha256'] and digest(raw)==entry['raw_sha256']
+    obj.write_bytes(legacy)  # manifest untouched: gzip hash now diverges, RAW identical
+    assert rebuild(archive,tmp_path/'rebuilt.sqlite')['integrity']=='ok'
+    obj.write_bytes(gzip.compress(raw+b' ',compresslevel=1,mtime=1700000000))
+    with pytest.raises(ValueError,match='SHA-256 ou tamanho original'):rebuild(archive,tmp_path/'rebuilt2.sqlite')
