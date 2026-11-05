@@ -41,9 +41,16 @@ def collect(location_id, runtime, *, database=None, deadline=None):
             fresh_after=None
         else:
             # Run-aware cache: members are reused while the provider has not published a newer
-            # run (up to 12 h); without run metadata a conservative 3 h TTL applies.
+            # run, but never for more than 4 h (observed: a provider metadata file announcing a
+            # month-old run kept members 7 h stale). Metadata older than 24 h is ignored.
             fresh_after=collector.RUN_AVAILABILITY.get(params.get('models'))
-            ttl=12 if fresh_after else 3
+            if fresh_after:
+                try:
+                    import datetime as _dt
+                    age_h=(_dt.datetime.now(_dt.timezone.utc)-_dt.datetime.fromisoformat(str(fresh_after).replace('Z','+00:00'))).total_seconds()/3600
+                    if age_h>24:fresh_after=None
+                except (ValueError,TypeError):fresh_after=None
+            ttl=4 if fresh_after else 3
         return client.get(url,params,ttl_hours=ttl,validator=validate,product=product,fresh_after=fresh_after)
     def fetch_meta(url):
         return client.get(url,{},ttl_hours=.25,product='model_meta')
