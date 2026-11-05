@@ -339,3 +339,25 @@ def test_station_hourly_preserves_invalid_native_rain_and_full_period(tmp_path):
         assert tuple(invalid)==(-.1,None,'out_of_range')
     with pytest.raises(ValueError,match='estação'):normalize_hourly([{**raw[0],'CD_ESTACAO':'OTHER'}],meta)
     with pytest.raises(ValueError,match='duplicada'):normalize_hourly([raw[0],raw[0]],meta)
+
+
+def test_duplicate_events_with_a_legacy_archive_object_keep_the_manifest_consistent(tmp_path):
+    """Two requests returning the same body, whose object already exists in the archive in a
+    different gzip container, must archive and verify (regression: 05/11/2026 archive failure)."""
+    cap,payload,event=fixture_capture(tmp_path)
+    body=packed([])
+    first=cap.record('https://apitempo.inmet.gov.br/estacao/2026-11-02/2026-11-05/A752',{},content=body,status=200,product='official_response')
+    second=cap.record('https://apitempo.inmet.gov.br/estacao/2026-11-02/2026-11-05/A772',{},content=body,status=200,product='official_response')
+    assert first['relative_path']==second['relative_path']
+    cap.finish()
+    archive=tmp_path/'archive'
+    legacy=archive/first['relative_path'];legacy.parent.mkdir(parents=True,exist_ok=True)
+    legacy.write_bytes(gzip.compress(body,compresslevel=1,mtime=1700000000))  # same RAW, different container bytes
+    assert digest(legacy.read_bytes())!=first['gzip_sha256']
+    result=archive_capture(cap.root,archive)
+    assert result['state']=='archived'
+    manifest=verify_manifest(archive,archive/result['manifest'])
+    kept=digest(legacy.read_bytes())
+    assert all(e['gzip_sha256']==kept for e in manifest['requests'] if e.get('relative_path')==first['relative_path'])
+    assert archive_capture(cap.root,archive)['state']=='already_archived'
+    assert rebuild(archive,tmp_path/'rebuilt.sqlite')['integrity']=='ok'

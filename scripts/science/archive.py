@@ -2,6 +2,7 @@
 from __future__ import annotations
 import datetime as dt
 import gzip
+import zlib
 import json
 import os
 import shutil
@@ -21,20 +22,34 @@ def checked_object(root, entry, *, strict_gzip=True):
     compressed=path.read_bytes()
     if strict_gzip and digest(compressed)!=entry['gzip_sha256']:
         raise ValueError('SHA-256 gzip divergente')
-    with gzip.open(path,'rb') as stream:
-        body=stream.read(100_000_001)
+    try:
+        with gzip.open(path,'rb') as stream:
+            body=stream.read(100_000_001)
+    except (OSError,EOFError,zlib.error) as exc:  # gzip.BadGzipFile is an OSError
+        raise ValueError(f'Objeto gzip ilegível; SHA-256 não verificável ({type(exc).__name__})') from exc
     if len(body)>100_000_000 or len(body)!=entry['byte_count'] or digest(body)!=entry['raw_sha256']:
         raise ValueError('SHA-256 ou tamanho original divergente')
     return body
 
 def verify_manifest(root, file):
+    """Manifest hash plus every referenced object (RAW SHA-256 and size always strict).
+
+    The gzip container of an object may legitimately differ from the bytes recorded at capture
+    time when the archive already held the same RAW payload in a legacy container; the RAW
+    hash is the integrity contract, so the gzip digest is checked only when it matches.
+    """
     file=Path(file)
     raw=file.read_bytes()
     if file.with_suffix('.sha256').read_text().strip()!=digest(raw):
         raise ValueError('SHA-256 do manifesto divergente')
     manifest=json.loads(raw)
     for entry in referenced(manifest):
-        checked_object(root,entry)
+        try:
+            checked_object(root,entry)
+        except ValueError as exc:
+            if 'SHA-256 gzip divergente' not in str(exc):
+                raise
+            checked_object(root,entry,strict_gzip=False)
     return manifest
 
 def archive_capture(capture_dir, archive_root, *, force_slot=None):
@@ -79,9 +94,14 @@ def archive_capture(capture_dir, archive_root, *, force_slot=None):
             except ValueError as exc:
                 if 'SHA-256 gzip divergente' not in str(exc):
                     raise
-                # Legacy objects may have different gzip bytes for the same RAW payload.
+                # Legacy objects may have different gzip bytes for the same RAW payload. Every
+                # event that references this path (duplicates included) must record the bytes
+                # actually kept in the archive, or the written manifest contradicts itself.
                 checked_object(archive_root,entry,strict_gzip=False)
-                entry['gzip_sha256']=digest(dest.read_bytes())
+                kept=digest(dest.read_bytes())
+                for event in entries:
+                    if event.get('relative_path')==rel:
+                        event['gzip_sha256']=kept
         else:
             atomic(dest,(capture_dir/rel).read_bytes())
     # Manifest is the commit marker. Objects without a manifest are ignored during replay.
