@@ -20,10 +20,33 @@ def now_utc() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds')
 
 
-def http_json(url: str, timeout: int = 18) -> Any:
+def http_json(url: str, timeout: int = 18, *, record_url: str | None = None) -> Any:
+    """Plain GET. ``record_url`` is accepted so the scientific capture can store a redacted URL."""
     r = requests.get(url, timeout=timeout, headers={'User-Agent': 'Campo-e-Clima/0.5 (scientific open weather dashboard)'})
     r.raise_for_status()
     return r.json()
+
+
+def station_route(kind: str, start: str, end: str, code: str) -> tuple[str, str]:
+    """(request_url, public_url) for INMET station observations.
+
+    INMET hands out a free token on request; it travels in the URL path by the
+    provider's design, so the public (recorded) URL never contains it.
+    """
+    import os
+    segment = 'estacao/diaria' if kind == 'daily' else 'estacao'
+    public = f'https://apitempo.inmet.gov.br/{segment}/{start}/{end}/{code}'
+    token = os.environ.get('INMET_API_TOKEN', '').strip()
+    if token:
+        return f'https://apitempo.inmet.gov.br/token/{segment}/{start}/{end}/{code}/{token}', public
+    return public, public
+
+
+def preferred_stations(stations: list[dict], *, max_distance_km: float) -> list[dict]:
+    """Operating stations within range; INMET-operated first, then partner networks, by distance."""
+    usable = [s for s in stations if s.get('distance_km') is not None and s['distance_km'] <= max_distance_km
+              and str(s.get('status', '')).casefold() == 'operante']
+    return sorted(usable, key=lambda s: (0 if str(s.get('entity') or '').strip().upper() == 'INMET' else 1, s['distance_km']))
 
 
 def tokens(value: Any) -> list[str]:
@@ -194,23 +217,28 @@ def collect_nearby_station_hourly(station_meta:dict, *, max_distance_km:int=120)
          'queried_at_utc':now_utc(),'source_url':'https://apitempo.inmet.gov.br/',
          'note':'Sem leitura não significa sem vento/sem chuva. Fonte INMET ou rede integrada; conferir entidade operadora.'}
     if station_meta.get('state')!='ok':return {**out,'error':'Catálogo de estações não retornou'}
-    options=[x for x in station_meta.get('nearest',[]) if x['distance_km']<=max_distance_km and str(x['status']).casefold()=='operante']
+    options=preferred_stations(station_meta.get('nearest',[]),max_distance_km=max_distance_km)
     if not options:return {**out,'state':'not_covered','error':'Sem estação listada como operante nesta distância'}
-    station=options[0]
     today=dt.datetime.now(dt.timezone.utc).date()
     start=today-dt.timedelta(days=3)
-    url=f'https://apitempo.inmet.gov.br/estacao/{start.isoformat()}/{today.isoformat()}/{station["station_code"]}'
-    common={**out,'station_code':station['station_code'],'station_name':station['name'],
-            'distance_km':station['distance_km'],'entity':station.get('entity'),'source_url':url}
-    try:
-        parsed=parse_inmet_hourly(http_json(url, timeout=12),station_code=station['station_code'])
-        return {**common,**parsed}
-    except (requests.RequestException, ValueError, TypeError) as exc:
-        # Errors may include full URL, but no tokens are used in this public call.
-        return {**common,'error':str(exc)[:210],
-                'fallback_url':'https://tempo.inmet.gov.br/TabelaEstacoes',
-                'import_url':'https://portal.inmet.gov.br/dadoshistoricos/',
-                'note':'Endpoint de observações não acessível no ambiente de coleta. Tabela oficial e ZIPs históricos são alternativas gratuitas.'}
+    attempts=[]
+    common=out
+    for station in options[:3]:
+        url,public=station_route('hourly',start.isoformat(),today.isoformat(),station['station_code'])
+        common={**out,'station_code':station['station_code'],'station_name':station['name'],
+                'distance_km':station['distance_km'],'entity':station.get('entity'),'source_url':public}
+        try:
+            parsed=parse_inmet_hourly(http_json(url, timeout=12, record_url=public),station_code=station['station_code'])
+            if parsed.get('state')!='ok':
+                attempts.append(f"{station['station_code']}: sem registros");continue
+            return {**common,**parsed,'stations_skipped':attempts}
+        except (requests.RequestException, ValueError, TypeError) as exc:
+            # Never echo the request URL: with a token it would leak the credential.
+            attempts.append(f"{station['station_code']}: {type(exc).__name__}: {str(exc).split(' for url')[0][:90]}")
+    return {**common,'error':' | '.join(attempts)[:300],
+            'fallback_url':'https://tempo.inmet.gov.br/TabelaEstacoes',
+            'import_url':'https://portal.inmet.gov.br/dadoshistoricos/',
+            'note':'Endpoint de observações não acessível sem token ou sem registros para as estações candidatas. Tabela oficial e ZIPs históricos são alternativas gratuitas; o token INMET é opcional (INMET_API_TOKEN).'}
 
 def parse_inmet_daily(payload:Any, *, station_code:str) -> dict:
     """Read only observed daily INMET station series; not a Naviraí measurement.
@@ -251,20 +279,24 @@ def collect_nearby_station_daily(station_meta:dict, *, max_distance_km:int=180) 
           'source_url':'https://apitempo.inmet.gov.br/',
           'note':'Só observações identificadas por estação, sem interpolação para Naviraí.'}
     if station_meta.get('state')!='ok':return {**base,'state':'unavailable','error':'Cadastro de estações indisponível'}
-    candidates=[s for s in station_meta.get('nearest',[]) if s['distance_km']<=max_distance_km and s['status'].casefold()=='operante']
+    candidates=preferred_stations(station_meta.get('nearest',[]),max_distance_km=max_distance_km)
     if not candidates:
         return {**base,'state':'not_covered','error':f'Nenhuma estação operante a até {max_distance_km} km no inventário consultado.'}
-    s=candidates[0]
     today=dt.datetime.now(dt.timezone.utc).date()
     start=today-dt.timedelta(days=8)
-    url=f'https://apitempo.inmet.gov.br/estacao/diaria/{start.isoformat()}/{today.isoformat()}/{s["station_code"]}'
-    try:
-        raw=http_json(url)
-        out=parse_inmet_daily(raw,station_code=s['station_code'])
-        return {**base,**out,'source_url':url,'station_name':s['name'],
-                'distance_km':s['distance_km'],'latitude':s['latitude'],'longitude':s['longitude']}
-    except (requests.RequestException,ValueError,TypeError) as ex:
-        return {**base,'state':'unavailable','station_code':s['station_code'],
-                'station_name':s['name'],'distance_km':s['distance_km'],
-                'source_url':url,'error':str(ex)[:190],
-                'note':'Leituras diárias não disponíveis neste acesso; não considerar ausência de chuva.'}
+    attempts=[];s=candidates[0];public=''
+    for s in candidates[:3]:
+        url,public=station_route('daily',start.isoformat(),today.isoformat(),s['station_code'])
+        try:
+            raw=http_json(url,record_url=public)
+            out=parse_inmet_daily(raw,station_code=s['station_code'])
+            if out.get('state')!='ok':
+                attempts.append(f"{s['station_code']}: sem registros");continue
+            return {**base,**out,'source_url':public,'station_name':s['name'],'entity':s.get('entity'),
+                    'distance_km':s['distance_km'],'latitude':s['latitude'],'longitude':s['longitude'],'stations_skipped':attempts}
+        except (requests.RequestException,ValueError,TypeError) as ex:
+            attempts.append(f"{s['station_code']}: {type(ex).__name__}: {str(ex).split(' for url')[0][:90]}")
+    return {**base,'state':'unavailable','station_code':s['station_code'],
+            'station_name':s['name'],'distance_km':s['distance_km'],
+            'source_url':public,'error':' | '.join(attempts)[:300],
+            'note':'Leituras diárias não disponíveis neste acesso; não considerar ausência de chuva.'}

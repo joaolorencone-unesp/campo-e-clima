@@ -19,21 +19,30 @@ class FreeClient:
         self.limits=config()
         self.deadline=None
 
-    def get(self,url,params,*,ttl_hours=6,product='operational',initialization=None,validator=None):
+    def get(self,url,params,*,ttl_hours=6,product='operational',initialization=None,validator=None,fresh_after=None,record_url=None):
+        """GET with on-disk cache.
+
+        ``fresh_after`` (ISO UTC): a cached copy acquired before that instant is
+        ignored even inside its TTL (used when the provider announces a newer
+        model run). ``record_url`` replaces the URL stored in the capture, so a
+        path-embedded credential never reaches the public archive.
+        """
         parsed=urlsplit(url)
         if parsed.scheme!='https' or parsed.hostname not in ALLOWED_HOSTS or parsed.query or parsed.username:
             raise ValueError('Endpoint gratuito não aprovado')
         safe_parameters(params)
+        stored_url=record_url or url
         key=digest(packed([url,params])); cache=self.root/f'{key}.json'
         if cache.exists():
             try:
                 old=json.loads(cache.read_text(encoding='utf-8'));body=self.root/f'{key}.body'
                 age=(instant(now())-instant(old['collected_at_utc'])).total_seconds()
-                if body.exists() and digest(body.read_bytes())==old['sha256'] and 0<=age<ttl_hours*3600:
+                superseded=bool(fresh_after) and instant(old['collected_at_utc'])<instant(fresh_after)
+                if body.exists() and digest(body.read_bytes())==old['sha256'] and 0<=age<ttl_hours*3600 and not superseded:
                     payload=json.loads(body.read_bytes())
                     if validator:validator(payload)
                     if self.capture:
-                        event=self.capture.record(url,params,content=body.read_bytes(),status=200,product=product,initialization=initialization)
+                        event=self.capture.record(stored_url,params,content=body.read_bytes(),status=200,product=product,initialization=initialization)
                         event.update(collected_at_utc=old['collected_at_utc'],cache_hit=True,payload_valid=True)
                         self.capture.flush()
                     return payload
@@ -61,10 +70,10 @@ class FreeClient:
                 response=self.session.get(url,params=params,timeout=min(self.limits['http_timeout_seconds'],remaining),
                     headers={'User-Agent':'Campo-e-Clima/2.2 open-research'},allow_redirects=False)
             except requests.RequestException as exc:
-                if self.capture:self.capture.record(url,params,error=type(exc).__name__,product=product)
+                if self.capture:self.capture.record(stored_url,params,error=type(exc).__name__,product=product)
                 if attempt+1==self.limits['http_max_attempts']:raise
                 time.sleep(2**attempt);continue
-            event=self.capture.record(url,params,content=response.content,status=response.status_code,
+            event=self.capture.record(stored_url,params,content=response.content,status=response.status_code,
                 product=product,initialization=initialization,headers=dict(response.headers)) if self.capture else None
             if response.status_code==429:
                 retry=response.headers.get('Retry-After','3600')

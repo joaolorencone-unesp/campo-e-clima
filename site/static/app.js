@@ -78,7 +78,9 @@ function statusBar(){
  const issued=hasTimes?new Date(Math.min(...acquired)).toISOString():(validModels.length?null:state?.issued_at_utc);
  const emission=issued?new Date(issued):null;
  const age=emission && Number.isFinite(emission.getTime())?Math.round((Date.now()-emission.getTime())/60000):null;
- const stale=age===null||age<0||age>90;
+ // Ensembles are issued every 6–12 h; an acquisition older than 3 h may already be one cycle behind.
+ const stale=age===null||age<0||age>180;
+ const veryStale=age===null||age<0||age>12*60;
  const liveDate=state?._liveForecastAt?new Date(state._liveForecastAt):null;
  const liveFresh=liveDate && Number.isFinite(liveDate.getTime()) && Date.now()-liveDate.getTime()<90*60000;
  const issuedText=emission?emission.toLocaleString('pt-BR',{timeZone:activeTZ(),dateStyle:'short',timeStyle:'short'}):'não registrada';
@@ -91,7 +93,9 @@ function statusBar(){
   $('status').innerHTML= modelOK
     ? `✓ <strong>${modelOK} ensembles de chuva e ${gustOK} com rajadas consultados para o ponto selecionado.</strong> ${forecastText}Dados em grade, sem calibração local; fontes de Naviraí não são reutilizadas.`
     : `ℹ <strong>Previsão determinística carregada para o ponto selecionado.</strong> Probabilidades dos ensembles ainda não estão disponíveis. ${forecastText}Não confundir esta localidade com Naviraí.`;
- }else if(stale){$('status').innerHTML=`⚠ <strong>Ensembles sem coleta recente (${age==null?'horário desconhecido':age+' min'}).</strong> ${forecastText}Frequências de chuva e rajada estão desatualizadas; não utilizá-las para decisões atuais.`;}
+ }else if(stale){$('status').innerHTML=veryStale
+   ? `⚠ <strong>Ensembles sem coleta recente (${age==null?'horário desconhecido':age+' min'}).</strong> ${forecastText}Frequências de chuva e rajada estão desatualizadas; não utilizá-las para decisões atuais.`
+   : `⚠ <strong>Ensembles adquiridos há ${age} min</strong> (${modelOK} modelos com chuva; ${gustOK} com rajadas). ${forecastText}Pode existir rodada mais recente: frequências potencialmente desatualizadas, confira o frescor por modelo em Qualidade, fontes & diagnóstico.`;}
  else{$('status').innerHTML=`✓ <strong>Ensembles publicados há ${age} min:</strong> ${modelOK} modelos com chuva; ${gustOK} com rajadas. ${forecastText}<strong>Frequências não calibradas.</strong> Observações oficiais têm atualização separada.`;}
  return {stale,age,modelOK,gustOK,issued};
 }
@@ -136,6 +140,7 @@ function renderOverview(idx){
      yaxis:{title:'hPa',gridcolor:'#edf2f6',autorange:true}});
   else clearPlot('pressure-plot','Pressão ao nível do mar não disponível nesta rodada.');
  }else{['temp-plot','hour-rain-plot','vpd-plot','pressure-plot'].forEach(k=>clearPlot(k,'Sem previsão horária utilizável nesta edição.'));}
+ renderExtendedDeterministic();
  const rainMap=new Map((state?.rain_ensemble_daily||[]).map(x=>[x.date,x]));
  const gustMap=new Map((state?.gust_ensemble_daily||[]).map(x=>[x.date,x]));
  const rows=(daily.time||[]).slice(0,7).map((date,i)=>{
@@ -155,6 +160,27 @@ function renderOverview(idx){
  const titles=['Hora local','T °C','UR %','Chuva mm/h','Freq. >0,1 mm','Freq. >1 mm','Vento km/h','Rajada km/h','Vento de'];
  tableFill('today-table',titles,hourRows(currentISO,true),'Hoje não há mais horas futuras ou não foram encontrados dados.');
  tableFill('tomorrow-table',titles,hourRows(tomorrowISO,false),'Amanhã: previsão horária indisponível.');
+}
+function renderExtendedDeterministic(){
+ // Complementary agrometeorological variables (radiation, ET0, convection) from a separate request.
+ const ext=state?.deterministic_extended,status=$('extended-det-status');
+ if(!$('extended-det-plot'))return;
+ if(!ext||ext.state!=='ok'||!Array.isArray(ext.hourly?.time)){
+  if(status)status.textContent=ext?.state==='not_replayed'?'Variáveis complementares não fazem parte desta reprodução de captura.':`Radiação, ET₀ e CAPE indisponíveis nesta coleta${ext?.error?' ('+ext.error+')':''}. A previsão principal não é afetada.`;
+  clearPlot('extended-det-plot','Sem variáveis complementares nesta coleta.');clearPlot('extended-et0-plot','Sem ET₀ diária nesta coleta.');return;
+ }
+ const eh=ext.hourly,rows=hoursFrom(eh,72);
+ if(status)status.textContent=`Open-Meteo Forecast (variáveis complementares) adquirida ${ext.collected_at_utc?new Date(ext.collected_at_utc).toLocaleString('pt-BR',{timeZone:activeTZ(),dateStyle:'short',timeStyle:'short'}):'—'}${ext.minimal_subset?' · subconjunto mínimo (radiação, ET₀, CAPE)':''}. Estimativas de grade; CAPE/CIN indicam potencial convectivo, não previsão direta de tempestade.`;
+ if(rows.length){const x=rows.map(r=>dh(r.t));
+  const traces=[{x,y:rows.map(r=>val(eh,'shortwave_radiation',r.i)),type:'scatter',mode:'lines',name:'Radiação W/m²',fill:'tozeroy',fillcolor:'rgba(236,180,70,.15)',line:{color:'#d79a2b',width:2.4},hovertemplate:'%{y:.0f} W/m²<extra></extra>'}];
+  if(Array.isArray(eh.cape))traces.push({x,y:rows.map(r=>val(eh,'cape',r.i)),type:'scatter',mode:'lines',name:'CAPE J/kg',yaxis:'y2',line:{color:'#a4448a',width:2.2},hovertemplate:'CAPE %{y:.0f} J/kg<extra></extra>'});
+  chart('extended-det-plot',traces,'Radiação (W/m²)',{yaxis2:{title:'CAPE (J/kg)',overlaying:'y',side:'right',rangemode:'tozero',showgrid:false}});
+ }else clearPlot('extended-det-plot','Sem horas futuras nas variáveis complementares.');
+ const d=ext.daily||{};
+ if(Array.isArray(d.time)&&Array.isArray(d.et0_fao_evapotranspiration)){
+  chart('extended-et0-plot',[{x:d.time.map(ddmm),y:d.et0_fao_evapotranspiration,type:'bar',name:'ET₀ FAO-56 mm/dia',marker:{color:'#2a8f7a'},hovertemplate:'%{y:.1f} mm<extra></extra>'},
+   ...(Array.isArray(d.shortwave_radiation_sum)?[{x:d.time.map(ddmm),y:d.shortwave_radiation_sum,type:'scatter',mode:'lines+markers',name:'Radiação MJ/m²/dia',yaxis:'y2',line:{color:'#d79a2b',width:2}}]:[])],'ET₀ (mm/dia)',{height:300,yaxis2:{title:'MJ/m²/dia',overlaying:'y',side:'right',showgrid:false,rangemode:'tozero'}});
+ }else clearPlot('extended-et0-plot','Sem ET₀ diária nesta coleta.');
 }
 function renderRain(idx){
  const rain=state?.rain_ensemble_daily||[];
@@ -423,13 +449,13 @@ function renderMachines(){const daily=dailyData();const items=(daily.time||[]).s
  chart('machine-rain',[{type:'bar',x:items.map(ddmm),y:items.map((_,i)=>val(daily,'precipitation_sum',i)),name:'Chuva prevista',marker:{color:'#76b7d7'},hovertemplate:'%{y:.1f} mm<extra></extra>'}],'mm/dia');
 }
 function renderVerification(){const model=state?.ensemble_models||{};const items=Object.entries(model).sort((a,b)=>a[0].localeCompare(b[0]));
- tableFill('model-inventory',['Modelo','Chuva: válidos / declarados','Rajadas: válidos / declarados','Latitude grade','Longitude grade','Disponibilidade'],items.map(([name,item])=>{
+ tableFill('model-inventory',['Modelo','Chuva: válidos / declarados','Rajadas: válidos / declarados','Passo nativo chuva','Latitude grade','Longitude grade','Disponibilidade'],items.map(([name,item])=>{
    const rainDeclared=item.precipitation_members_declared;
    const gustDeclared=item.gust_members_declared;
    const rainShown=rainDeclared==null?(item.precipitation_members??'—'):`${item.precipitation_members??0} / ${rainDeclared}`;
    const gustShown=gustDeclared==null?(item.gust_members??'—'):`${item.gust_members??0} / ${gustDeclared}`;
    const detail='Contagem válida = máximo de membros completos em um dia; a quantidade efetiva varia por data. '+(item.detail||'');
-   return `<tr><td>${esc(name)}</td><td title="${esc(detail)}">${esc(rainShown)}</td><td title="${esc(detail)}">${esc(gustShown)}</td>${cell(item.grid_lat,'',3)}${cell(item.grid_lon,'',3)}<td class="${item.state==='ok'?'ok':'warn'}" title="${esc(item.detail||'')}">${esc(item.state==='ok'?'Chuva válida':item.state==='error'?('Falha: '+(item.detail||'não especificada')):'Sem chuva diária completa')}</td></tr>`;
+   return `<tr><td>${esc(name)}</td><td title="${esc(detail)}">${esc(rainShown)}</td><td title="${esc(detail)}">${esc(gustShown)}</td><td>${item.precipitation_native_step_hours?item.precipitation_native_step_hours+' h':'—'}</td>${cell(item.grid_lat,'',3)}${cell(item.grid_lon,'',3)}<td class="${item.state==='ok'?'ok':'warn'}" title="${esc(item.detail||'')}">${esc(item.state==='ok'?'Chuva válida':item.state==='error'?('Falha: '+(item.detail||'não especificada')):'Sem chuva diária completa')}</td></tr>`;
  }));
 }
 
@@ -613,7 +639,7 @@ function render(){
   const deterministicWindow=idx.length?`${dh(idx[0].t)} a ${dh(idx[idx.length-1].t)}`:'indisponível';
   coverage.textContent=`Horizonte horário determinístico: ${idx.length} horas futuras (${deterministicWindow}). Chuva por ensembles: ${ensemble72.length} horários futuros com membros válidos. A série diária mantém dias completos; janelas horárias com dados faltantes não são completadas artificialmente. Horários locais do ponto.`;
  }
- const guards=[()=>renderOverview(idx),()=>renderRain(idx),()=>renderWind(idx),()=>renderSpray(idx),ensembleScreening,renderMachines,renderVerification,renderOfficial,renderExtras,renderFreeResearch,renderCalendar];
+ const guards=[()=>window.CampoSummary?.render?.(state),()=>window.CampoAgroWeather?.render?.(state),()=>renderOverview(idx),()=>renderRain(idx),()=>renderWind(idx),()=>renderSpray(idx),ensembleScreening,renderMachines,renderVerification,renderOfficial,renderExtras,renderFreeResearch,renderCalendar];
  for(const f of guards){try{f();}catch(err){console.error('Render failure',err);}}
  redrawActive();
  window.dispatchEvent(new CustomEvent('campo:forecast-rendered'));

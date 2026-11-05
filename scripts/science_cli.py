@@ -12,6 +12,7 @@ from scripts.science.capture import Capture
 from scripts.science.ingest import ingest_manifest, export_parquet
 from scripts.science.archive import archive_capture, rebuild
 from scripts.science.http import FreeClient
+from scripts.freshness import summarize as summarize_freshness, apply_acquisition_times
 
 def collect(location_id, runtime, *, database=None, deadline=None):
     import scripts.collect as collector
@@ -24,6 +25,7 @@ def collect(location_id, runtime, *, database=None, deadline=None):
     client.deadline=deadline
     original_official=official.http_json
     original_fetch=collector.fetch;old=(collector.LAT,collector.LON,collector.TZ)
+    os.environ.setdefault('PREVIOUS_PUBLICATION_DIR',str(Path(runtime)/'previous_publication'))
     old_output=os.environ.get('OUTPUT_JSON')
     dest=Path('site/data/latest.json' if location_id=='navirai' else f'site/data/locations/{location_id}/latest.json')
     collector.LAT,collector.LON,collector.TZ=loc['latitude'],loc['longitude'],loc['timezone']
@@ -34,35 +36,41 @@ def collect(location_id, runtime, *, database=None, deadline=None):
                 parse_gefs_extended(payload)
             else:collector.validate_forecast(payload)
         product='extended_ensemble' if params.get('daily') and 'ensemble-api.' in url else 'operational'
-        return client.get(url,params,ttl_hours=.45 if 'ensemble-api.' not in url else 6,validator=validate,product=product)
+        if 'ensemble-api.' not in url:
+            ttl=.45
+            fresh_after=None
+        else:
+            # Run-aware cache: members are reused while the provider has not published a newer
+            # run (up to 12 h); without run metadata a conservative 3 h TTL applies.
+            fresh_after=collector.RUN_AVAILABILITY.get(params.get('models'))
+            ttl=12 if fresh_after else 3
+        return client.get(url,params,ttl_hours=ttl,validator=validate,product=product,fresh_after=fresh_after)
+    def fetch_meta(url):
+        return client.get(url,{},ttl_hours=.25,product='model_meta')
+    original_meta=collector.fetch_meta
     collector.fetch=fetch
-    official.http_json=lambda url,timeout=18: client.get(url,{},ttl_hours=0.45,product="official_response")
+    collector.fetch_meta=fetch_meta
+    collector.META_FAILURES['transport']=0
+    official.http_json=lambda url,timeout=18,record_url=None: client.get(url,{},ttl_hours=0.45,product="official_response",record_url=record_url)
     os.environ['OUTPUT_JSON']=str(dest)
     try:
         collector.main(include_local_sources=location_id=='navirai')
         public=json.loads(dest.read_text(encoding='utf-8'))
-        public.update(system_version='2.2.0',collected_at_utc=public['issued_at_utc'],model_initialization_utc=None)
+        from scripts.science import SYSTEM_VERSION
+        public.update(system_version=SYSTEM_VERSION,collected_at_utc=public['issued_at_utc'],model_initialization_utc=None)
         public['site']['id']=location_id
         # Cache hits retain the actual acquisition time, never the current UI refresh time.
-        for event in cap.manifest['requests']:
-            if event.get('http_status')!=200:continue
-            if event.get('product')=='extended_ensemble' and event.get('payload_valid',True):
-                extended=public.get('complementary',{}).get('gefs_extended',{})
-                if extended.get('state')=='ok':
-                    extended.update(collected_at_utc=event['collected_at_utc'],cache_hit=event.get('cache_hit',False))
-                    # The daily product cache must also retain the original acquisition clock.
-                    slow=Path('site/data/slow_sources_cache.json')
-                    if slow.exists():
-                        daily_cache=json.loads(slow.read_text(encoding='utf-8'))
-                        daily_cache.setdefault('sources',{})['gefs_extended']=extended
-                        write_json(slow,daily_cache)
-            if event['source_url']=='https://api.open-meteo.com/v1/forecast' and not event['params'].get('models') and event.get('product')=='operational' and public.get('deterministic'):
-                public['deterministic']['collected_at_utc']=event['collected_at_utc']
-                public['sources']['Open-Meteo Forecast']['collected_at_utc']=event['collected_at_utc']
-            for model in public.get('ensemble_models',{}).values():
-                if model.get('code')==event['params'].get('models') and event['params'].get('forecast_days') and event['params'].get('hourly'):
-                    model['collected_at_utc']=event['collected_at_utc']
-                    model['cache_hit']=event.get('cache_hit',False)
+        extended_event=apply_acquisition_times(public,cap.manifest['requests'])
+        if extended_event is not None:
+            extended=public.get('complementary',{}).get('gefs_extended',{})
+            if extended.get('state')=='ok':
+                # The daily product cache must also retain the original acquisition clock.
+                slow=Path('site/data/slow_sources_cache.json')
+                if slow.exists():
+                    daily_cache=json.loads(slow.read_text(encoding='utf-8'))
+                    daily_cache.setdefault('sources',{})['gefs_extended']=extended
+                    write_json(slow,daily_cache)
+        public['freshness']=summarize_freshness(public)
         write_json(dest,public)
         capture_module.ACTIVE=cap
         capture_module.record_auxiliary_latest(dest)
@@ -78,7 +86,8 @@ def collect(location_id, runtime, *, database=None, deadline=None):
         raise
     finally:
         official.http_json=original_official
-        collector.fetch=original_fetch;collector.LAT,collector.LON,collector.TZ=old
+        collector.fetch=original_fetch;collector.fetch_meta=original_meta;collector.LAT,collector.LON,collector.TZ=old
+        collector.RUN_AVAILABILITY.clear()
         capture_module.ACTIVE=None
         if old_output is None:os.environ.pop('OUTPUT_JSON',None)
         else:os.environ['OUTPUT_JSON']=old_output

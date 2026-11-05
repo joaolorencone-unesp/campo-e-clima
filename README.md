@@ -1,3 +1,25 @@
+# Campo e Clima v3 — plataforma agrometeorológica aberta (05/11/2026)
+
+Branch de desenvolvimento `claude/campo-clima-platform-qvl7e8` sobre `main` em `98f48c4`. Integração em `main` continua sendo uma etapa controlada (PR em rascunho).
+
+- **Modo simples / modo avançado** e cinco áreas de navegação; resumo da fazenda em linguagem clara, gerado só a partir dos dados publicados.
+- **Passo nativo de precipitação por modelo** (1 h ICON/UKMO, 3 h IFS/GEFS/GEM, 6 h AIFS/AI-GEFS/WeatherNext 2): janelas horárias usam apenas modelos compatíveis.
+- **Acumulados de 3/5/7 dias e dias secos por trajetória de membro**, concordância diária entre modelos, mudança desde a publicação anterior.
+- **Ensembles agrometeorológicos** (T, UR, VPD do mesmo membro, vento, rajadas) integrados ao coletor e às coordenadas personalizadas.
+- **Frescor por modelo** (rodada do provedor, aquisição, cache, publicação) e **diagnóstico central** (`site/data/diagnostics.json`).
+- **Estações INMET** operadas pelo INMET em primeiro lugar (A752 Itaquiraí, A949 Diamantino), com token gratuito opcional `INMET_API_TOKEN` nunca gravado no arquivo.
+- Variáveis complementares do determinístico (radiação, ET₀, CAPE, CIN, solo), pedido isolado da previsão principal.
+
+Documentos: [Auditoria](docs/AUDITORIA_V3.md) · [Fontes gratuitas](docs/FONTES_V3.md) · [Arquitetura](docs/ARQUITETURA_V3.md) · [Design](docs/DESIGN_V3.md) · [Plano científico de chuva](docs/PLANO_CIENTIFICO_CHUVA.md) · [Evidências v3](docs/RELEASES/V3_EVIDENCIAS.md) · [Changelog](docs/CHANGELOG.md).
+
+Reproduzir uma publicação a partir do arquivo científico, sem internet:
+
+```bash
+python -m scripts.replay_capture --manifest weather-archive/manifests/2026-11/20261105T00-navirai.json --objects-root weather-archive --location navirai --output runtime/replay/navirai.json
+```
+
+---
+
 # Campo e Clima v2.2 — candidato de ciência e rastreabilidade
 
 Desenvolvimento sobre a v2.1 existente, commit de origem `e1241e2`. A branch `feature/v2.2-ciencia-e-rastreabilidade` contém o código para revisão; main não foi alterada.

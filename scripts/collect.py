@@ -12,15 +12,22 @@ import math
 import re
 import time
 from typing import Any
+from zoneinfo import ZoneInfo
 import requests
 try:
     from scripts.sources.gefs_extended import collect_gefs_extended
     from scripts.sources.cache_policy import refresh_daily
     from scripts.spraying import read_joint_members, mix_joint_hourly, mix_joint_windows2h
+    from scripts.rain_products import (native_step_hours, member_day_totals, mix_accumulations, mix_dry_spells,
+                                       model_agreement_daily, compare_runs)
+    from scripts.agro_ensemble import model_samples as agro_model_samples, blend_samples as agro_blend_samples, variable_coverage as agro_variable_coverage
 except ModuleNotFoundError:  # CLI invocation: python scripts/collect.py
     from sources.gefs_extended import collect_gefs_extended
     from sources.cache_policy import refresh_daily
     from spraying import read_joint_members, mix_joint_hourly, mix_joint_windows2h
+    from rain_products import (native_step_hours, member_day_totals, mix_accumulations, mix_dry_spells,
+                               model_agreement_daily, compare_runs)
+    from agro_ensemble import model_samples as agro_model_samples, blend_samples as agro_blend_samples, variable_coverage as agro_variable_coverage
 try:
     from scripts.sources.free_research import collect_climate_era5, collect_previous_runs, compare_export_provisional, collect_openweather_free
     from scripts.sources.official import collect_official
@@ -46,7 +53,37 @@ MODELS = {
 }
 FORECAST_URL = 'https://api.open-meteo.com/v1/forecast'
 ENSEMBLE_URL = 'https://ensemble-api.open-meteo.com/v1/ensemble'
+# Provider metadata per model domain: initialisation/availability of the latest run.
+# Best effort: a missing or malformed file never blocks the collection.
+META_URL = 'https://api.open-meteo.com/data/{domain}/static/meta.json'
+MODEL_META_DOMAINS = {
+    'ECMWF IFS': ('ecmwf_ifs025_ensemble',),
+    'ECMWF AIFS': ('ecmwf_aifs025_ensemble',),
+    'NOAA GEFS': ('ncep_gefs025', 'ncep_gefs05'),
+    'NOAA AI-GEFS': ('ncep_aigefs025',),
+    'DWD ICON': ('dwd_icon_eps', 'dwd_icon_eu_eps'),
+    'GEM Canada': ('gem_global_ensemble',),
+    'UKMO': ('ukmo_global_ensemble_20km',),
+    'Google WeatherNext2': ('google_weathernext2_ensemble',),
+}
 TIMEOUT = 35
+# Availability (ISO UTC) of the newest provider run per model code, filled by main()
+# before member requests so that a run-aware cache can skip unchanged cycles.
+RUN_AVAILABILITY: dict[str, str | None] = {}
+META_FAILURES = {'transport': 0}
+
+
+def expected_offset_seconds(now_utc: dt.datetime | None = None) -> int:
+    """UTC offset of the configured timezone, computed (not assumed) for the current instant."""
+    now_utc = now_utc or dt.datetime.now(dt.timezone.utc)
+    offset = now_utc.astimezone(ZoneInfo(TZ)).utcoffset()
+    return int(offset.total_seconds()) if offset is not None else 0
+
+
+def offset_label(seconds: int) -> str:
+    sign = '-' if seconds < 0 else '+'
+    hours, remainder = divmod(abs(int(seconds)), 3600)
+    return f'UTC{sign}{hours}' + (f':{remainder // 60:02d}' if remainder else '')
 
 
 def fetch(url: str, params: dict[str, Any]) -> dict:
@@ -55,9 +92,74 @@ def fetch(url: str, params: dict[str, Any]) -> dict:
     payload = response.json()
     if payload.get('error'):
         raise ValueError(str(payload.get('reason', 'API error')))
-    if payload.get('utc_offset_seconds') != -14400:
-        raise ValueError('Expected America/Campo_Grande = UTC-4; inspect API timezone before ingesting')
+    expected = expected_offset_seconds()
+    if payload.get('utc_offset_seconds') != expected:
+        raise ValueError(f'Expected {TZ} = {offset_label(expected)}; inspect API timezone before ingesting')
     return payload
+
+
+def fetch_meta(url: str) -> dict:
+    """Small provider metadata document (no coordinates, no quota-heavy members)."""
+    response = requests.get(url, timeout=12, headers={'User-Agent': 'Campo-e-Clima-research/3.0'})
+    response.raise_for_status()
+    payload = response.json()
+    if not isinstance(payload, dict):
+        raise ValueError('meta.json is not an object')
+    return payload
+
+
+def _iso_from_epoch(value: Any) -> str | None:
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value > 0:
+        return dt.datetime.fromtimestamp(float(value), dt.timezone.utc).isoformat(timespec='seconds')
+    if isinstance(value, str) and value:
+        try:
+            parsed = dt.datetime.fromisoformat(value.replace('Z', '+00:00'))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=dt.timezone.utc)
+            return parsed.astimezone(dt.timezone.utc).isoformat(timespec='seconds')
+        except ValueError:
+            return None
+    return None
+
+
+def model_run_metadata(name: str, *, fetcher=None) -> dict:
+    """Latest run metadata for a named model, or an explicit unavailable state.
+
+    Open-Meteo publishes ``static/meta.json`` per model domain with the
+    initialisation, modification and availability instants of the newest run.
+    Seamless products combine several domains; the first domain that answers is used.
+    """
+    if os.environ.get('MODEL_META_ENABLE', '1') != '1':
+        return {'state': 'disabled'}
+    if META_FAILURES['transport'] >= 2:
+        return {'state': 'skipped', 'detail': 'metadados desativados nesta execução após falhas de rede consecutivas'}
+    fetcher = fetcher or fetch_meta
+    problems = []
+    for domain in MODEL_META_DOMAINS.get(name, ()):
+        try:
+            meta = fetcher(META_URL.format(domain=domain))
+            META_FAILURES['transport'] = 0
+        except requests.HTTPError as exc:  # wrong domain name or provider change: cheap, try the next domain
+            status = exc.response.status_code if exc.response is not None else '?'
+            problems.append(f'{domain}: HTTP {status}')
+            continue
+        except Exception as exc:  # network or JSON problems are non-fatal; repeated ones stop further attempts
+            META_FAILURES['transport'] += 1
+            problems.append(f'{domain}: {type(exc).__name__}')
+            if META_FAILURES['transport'] >= 2:
+                break
+            continue
+        out = {'state': 'ok', 'domain': domain,
+               'last_run_initialisation_utc': _iso_from_epoch(meta.get('last_run_initialisation_time')),
+               'last_run_availability_utc': _iso_from_epoch(meta.get('last_run_availability_time')),
+               'last_run_modification_utc': _iso_from_epoch(meta.get('last_run_modification_time')),
+               'update_interval_seconds': meta.get('update_interval_seconds') if isinstance(meta.get('update_interval_seconds'), (int, float)) else None,
+               'temporal_resolution_seconds': meta.get('temporal_resolution_seconds') if isinstance(meta.get('temporal_resolution_seconds'), (int, float)) else None}
+        if not any(out[k] for k in ('last_run_initialisation_utc', 'last_run_availability_utc', 'last_run_modification_utc')):
+            problems.append(f'{domain}: sem instantes de rodada')
+            continue
+        return out
+    return {'state': 'unavailable', 'detail': '; '.join(problems)[:200] or 'domínio não cadastrado'}
 
 
 def base_params():
@@ -77,8 +179,80 @@ def forecast() -> dict:
     return payload
 
 
+EXTENDED_HOURLY = ['shortwave_radiation', 'et0_fao_evapotranspiration', 'cape', 'convective_inhibition', 'lifted_index',
+                   'wet_bulb_temperature_2m', 'soil_temperature_0cm', 'soil_moisture_0_to_1cm', 'cloud_cover_low',
+                   'cloud_cover_mid', 'cloud_cover_high', 'surface_pressure', 'visibility', 'boundary_layer_height']
+EXTENDED_HOURLY_MINIMAL = ['shortwave_radiation', 'et0_fao_evapotranspiration', 'cape']
+EXTENDED_DAILY = ['et0_fao_evapotranspiration', 'shortwave_radiation_sum', 'sunshine_duration', 'uv_index_max',
+                  'precipitation_hours', 'wind_speed_10m_max', 'wind_direction_10m_dominant']
+
+
+def forecast_extended(*, fetcher=None) -> dict:
+    """Optional agrometeorological variables (radiation, ET0, convection, soil, clouds).
+
+    Requested separately so that an unsupported variable name or a provider hiccup
+    never removes the core forecast. On HTTP 400 a minimal, long-standing subset is
+    retried once; after that the product is reported as unavailable with the reason.
+    """
+    fetcher = fetcher or fetch
+    attempts = [(EXTENDED_HOURLY, EXTENDED_DAILY), (EXTENDED_HOURLY_MINIMAL, ['et0_fao_evapotranspiration'])]
+    errors = []
+    for hourly, daily in attempts:
+        params = {**base_params(), 'forecast_days': 7, 'hourly': ','.join(hourly), 'daily': ','.join(daily)}
+        try:
+            payload = fetcher(FORECAST_URL, params)
+            validate_forecast(payload)
+            return {'state': 'ok', 'hourly': payload.get('hourly'), 'daily': payload.get('daily'),
+                    'hourly_units': payload.get('hourly_units'), 'daily_units': payload.get('daily_units'),
+                    'collected_at_utc': dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds'),
+                    'variables_requested': hourly, 'minimal_subset': hourly is EXTENDED_HOURLY_MINIMAL,
+                    'source': 'Open-Meteo Forecast (best match) • variáveis agrometeorológicas complementares',
+                    'note': 'Grade do modelo, horário local do ponto. Radiação e ET0 FAO-56 são estimativas; CAPE/CIN indicam potencial convectivo, não previsão direta de tempestade.'}
+        except requests.HTTPError as exc:
+            status = exc.response.status_code if exc.response is not None else None
+            errors.append(f'HTTP {status}')
+            if status == 429:
+                break
+            if status != 400:
+                break
+        except (requests.RequestException, ValueError, TypeError) as exc:
+            errors.append(f'{type(exc).__name__}: {str(exc)[:120]}')
+            break
+    return {'state': 'unavailable', 'error': ' | '.join(errors)[:240], 'collected_at_utc': None,
+            'note': 'Variáveis complementares indisponíveis nesta coleta; a previsão principal não é afetada.'}
+
+
+def previous_publication_path() -> pathlib.Path:
+    root = pathlib.Path(os.environ.get('PREVIOUS_PUBLICATION_DIR', 'runtime/previous_publication'))
+    return root / f'{LAT:.3f}_{LON:.3f}.json'
+
+
+def compare_with_previous_publication(result: dict) -> dict:
+    """Day-by-day change versus the last publication of the same point, then store this one."""
+    path = previous_publication_path()
+    previous = None
+    if path.is_file():
+        try:
+            previous = json.loads(path.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            previous = None
+    comparison = compare_runs(result.get('rain_ensemble_daily') or [], (previous or {}).get('rain_ensemble_daily') or [],
+                              previous_issued_at_utc=(previous or {}).get('issued_at_utc'))
+    acquisition = {name: item.get('collected_at_utc') for name, item in result.get('ensemble_models', {}).items() if item.get('state') == 'ok'}
+    before = (previous or {}).get('ensemble_acquisition') or {}
+    comparison['models_with_new_acquisition'] = sorted(name for name, stamp in acquisition.items() if stamp and stamp != before.get(name))
+    comparison['models_unchanged_acquisition'] = sorted(name for name, stamp in acquisition.items() if stamp and stamp == before.get(name))
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({'issued_at_utc': result.get('issued_at_utc'), 'rain_ensemble_daily': result.get('rain_ensemble_daily'),
+                                    'ensemble_acquisition': acquisition}, ensure_ascii=False), encoding='utf-8')
+    except OSError as exc:
+        comparison['persistence_error'] = str(exc)[:120]
+    return comparison
+
+
 def validate_forecast(payload):
-    if not isinstance(payload,dict) or payload.get('utc_offset_seconds')!=-14400:
+    if not isinstance(payload,dict) or payload.get('utc_offset_seconds')!=expected_offset_seconds():
         raise ValueError('Fuso ou resposta de previsão incompatível')
     hourly=payload.get('hourly') or {};times=hourly.get('time') or []
     if not times or not any(isinstance(series,list) and len(series)==len(times) and
@@ -111,7 +285,7 @@ def next_local_forecast_hour(now_utc: dt.datetime | None = None) -> str:
     now_utc = now_utc or dt.datetime.now(dt.timezone.utc)
     if now_utc.tzinfo is None:
         raise ValueError('UTC instant must be timezone-aware')
-    local = now_utc.astimezone(dt.timezone(dt.timedelta(hours=-4)))
+    local = now_utc.astimezone(ZoneInfo(TZ))
     return (local.replace(minute=0, second=0, microsecond=0) +
             dt.timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M')
 
@@ -309,15 +483,25 @@ def model_hourly_rain(payload: dict, max_hours: int = 72,
     return output
 
 
-def mix_hourly_rain(by_model: dict[str,dict]) -> list[dict]:
-    """Mixture: 1/M total model weight, 1/n per valid model member for each window."""
+def mix_hourly_rain(by_model: dict[str,dict], native_steps: dict[str, int | None] | None = None) -> list[dict]:
+    """Mixture: 1/M total model weight, 1/n per valid model member for each window.
+
+    ``native_steps`` maps model name to its native precipitation step in hours.
+    A model whose native step is longer than the window (e.g. a 6 h model in a
+    1 h or 3 h window) is excluded from that window: the provider splits its
+    accumulation into equal hourly parts, which says nothing about hourly
+    intensity or occurrence. Unknown steps (no rain to detect) stay eligible.
+    """
+    native_steps = native_steps or {}
     stamps = sorted({t for model in by_model.values() for t in model})
     out = []
     for stamp in stamps:
         row = {'time':stamp, 'windows':{}}
         for duration in (1,3,6):
-            valid = {name:item[stamp][duration] for name,item in by_model.items()
+            candidates = {name:item[stamp][duration] for name,item in by_model.items()
                      if stamp in item and item[stamp].get(duration)}
+            valid = {name:values for name,values in candidates.items()
+                     if not (native_steps.get(name) or 0) > duration}
             if not valid:
                 continue
             model_weight = 1 / len(valid)
@@ -332,6 +516,7 @@ def mix_hourly_rain(by_model: dict[str,dict]) -> list[dict]:
             }
             for threshold in (0.1,1,3,5,10,20):
                 summary['p_gt_'+str(threshold).replace('.','_')+'_mm'] = round(sum(w for v,w in pairs if v>threshold),4)
+            summary['models_excluded_by_resolution'] = len(candidates) - len(valid)
             row['windows'][str(duration)] = summary
         if row['windows']:
             out.append(row)
@@ -356,11 +541,13 @@ def main(include_local_sources=True):
     now_utc = dt.datetime.now(dt.timezone.utc)
     recorded = now_utc.isoformat()
     hourly_start = next_local_forecast_hour(now_utc)
-    result: dict[str, Any] = {'schema_version': 4, 'issued_at_utc': recorded,
-             'site': {'latitude': LAT, 'longitude': LON, 'timezone': TZ},
-             'methodology': 'Equal total weight per valid ensemble model; uncalibrated member frequencies; forward 1/3/6h totals from joint member trajectories; interpolated hourly grids not independent measurements',
-             'sources': {}, 'deterministic': None, 'rain_ensemble_daily': [], 'gust_ensemble_daily': [], 'rain_ensemble_hourly': [], 'rain_models_daily': [], 'ensemble_models': {},
+    result: dict[str, Any] = {'schema_version': 5, 'issued_at_utc': recorded,
+             'site': {'latitude': LAT, 'longitude': LON, 'timezone': TZ, 'utc_offset_seconds': expected_offset_seconds(now_utc)},
+             'methodology': 'Equal total weight per valid ensemble model; uncalibrated member frequencies; forward 1/3/6h totals from joint member trajectories; hourly windows use only models whose native precipitation step fits the window; multi-day totals and dry spells per member trajectory; interpolated hourly grids are not independent measurements',
+             'sources': {}, 'deterministic': None, 'deterministic_extended': None, 'rain_ensemble_daily': [], 'gust_ensemble_daily': [], 'rain_ensemble_hourly': [], 'rain_models_daily': [], 'ensemble_models': {},
+             'rain_ensemble_accumulated': [], 'rain_dry_spell': None, 'rain_model_agreement_daily': [], 'agro_ensemble_hourly': [], 'agro_ensemble_coverage': {},
              'spray_joint_hourly': [], 'spray_joint_windows_2h': [], 'spray_joint_model_status': {},
+             'previous_run_comparison': None,
              'hourly_forecast_start_local':hourly_start, 'warnings': []}
     try:
         f = forecast()
@@ -373,14 +560,23 @@ def main(include_local_sources=True):
     except Exception as exc:
         result['sources']['Open-Meteo Forecast'] = {'state':'error', 'detail': str(exc)[:250]}
         result['warnings'].append('Forecast unavailable; no replacement with old data')
+    result['deterministic_extended'] = forecast_extended()
+    result['sources']['Open-Meteo Forecast (complementar)'] = {'state': result['deterministic_extended'].get('state'),
+        'collected_at_utc': result['deterministic_extended'].get('collected_at_utc'), 'detail': result['deterministic_extended'].get('error')}
 
     by_model = {}
     by_model_hourly = {}
     by_model_gust = {}
     by_model_spray = {}
+    by_model_agro = {}
+    by_model_steps = {}
+    by_model_member_days = {}
     for name, code in MODELS.items():
+        meta = model_run_metadata(name)
+        RUN_AVAILABILITY[code] = meta.get('last_run_availability_utc') if meta.get('state') == 'ok' else None
         try:
-            params = {**base_params(), 'models': code, 'hourly': 'precipitation,wind_gusts_10m'}
+            # Eight forecast days: seven COMPLETE local rain days (01h..00h) need the extra hour of day 8.
+            params = {**base_params(), 'models': code, 'forecast_days': 8, 'hourly': 'precipitation,wind_gusts_10m'}
             fallback_short_horizon = False
             try:
                 e = fetch(ENSEMBLE_URL, params)
@@ -391,7 +587,7 @@ def main(include_local_sources=True):
                 if isinstance(exc, requests.HTTPError) and exc.response is not None and exc.response.status_code==429:
                     raise
                 gust_request_error = str(exc)[:180]
-                e = fetch(ENSEMBLE_URL, {**base_params(), 'models': code, 'hourly': 'precipitation'})
+                e = fetch(ENSEMBLE_URL, {**base_params(), 'models': code, 'forecast_days': 8, 'hourly': 'precipitation'})
             except requests.Timeout as exc:
                 # Bounded, lighter fallback for models whose full 7-day rain+gust
                 # request times out. Only 4 days of rain: partial coverage is flagged.
@@ -403,8 +599,12 @@ def main(include_local_sources=True):
             d = model_daily_rain(e)
             g = model_daily_gust(e)
             hourly_rain = model_hourly_rain(e, future_start=hourly_start)
+            step = native_step_hours(e)
+            member_days = member_day_totals(e)
             result['ensemble_models'][name] = {
                 'code': code,
+                'precipitation_native_step_hours': step,
+                'model_run': meta,
                 'precipitation_members': d['valid_member_count'],
                 'precipitation_members_declared': d['member_count'],
                 'precipitation_members_valid_by_day': d['valid_members_by_day'],
@@ -423,6 +623,9 @@ def main(include_local_sources=True):
                 by_model[name] = d
             if hourly_rain:
                 by_model_hourly[name] = hourly_rain
+                by_model_steps[name] = step
+            if member_days:
+                by_model_member_days[name] = member_days
             if any(g['days'].values()):
                 by_model_gust[name] = g
             # Separate 4-day request avoids duplicating huge 7-day member arrays.
@@ -436,6 +639,9 @@ def main(include_local_sources=True):
                 spray_params.pop('forecast_days', None)  # hour-based API avoids starting at midnight
                 spray = fetch(ENSEMBLE_URL, {**spray_params, 'models': code})
                 joint = read_joint_members(spray, future_start=hourly_start)
+                agro_rows = agro_model_samples(spray, future_start=hourly_start)
+                if agro_rows:
+                    by_model_agro[name] = agro_rows
                 result['spray_joint_model_status'][name] = {
                     'member_fields_complete':joint['members_available'],
                     'members_valid_per_hour':{t:len(m) for t,m in joint['times'].items()},
@@ -447,14 +653,22 @@ def main(include_local_sources=True):
                     'status':'indisponivel', 'detail':str(spray_err)[:180],
                     'member_fields_complete':0}
         except Exception as exc:
-            result['ensemble_models'][name] = {'code': code, 'state': 'error', 'detail': str(exc)[:220]}
+            result['ensemble_models'][name] = {'code': code, 'state': 'error', 'detail': str(exc)[:220], 'model_run': meta}
         time.sleep(.2)
     result['rain_ensemble_daily'] = mix_days(by_model)
-    result['rain_ensemble_hourly'] = mix_hourly_rain(by_model_hourly)
+    result['rain_ensemble_hourly'] = mix_hourly_rain(by_model_hourly, native_steps=by_model_steps)
     result['rain_models_daily'] = rain_models_comparison(by_model)
     result['gust_ensemble_daily'] = mix_gust_days(by_model_gust)
+    result['rain_ensemble_accumulated'] = mix_accumulations(by_model_member_days)
+    result['rain_dry_spell'] = mix_dry_spells(by_model_member_days)
+    result['rain_model_agreement_daily'] = model_agreement_daily(by_model)
+    result['agro_ensemble_hourly'] = agro_blend_samples(by_model_agro)
+    result['agro_ensemble_coverage'] = agro_variable_coverage(by_model_agro)
     result['spray_joint_hourly'] = mix_joint_hourly(by_model_spray)
     result['spray_joint_windows_2h'] = mix_joint_windows2h(by_model_spray)
+    result['previous_run_comparison'] = compare_with_previous_publication(result)
+    result['hourly_resolution_note'] = ('Janelas de 1 h usam apenas modelos com passo nativo horário; janelas de 3 h excluem modelos de 6 h. '
+                                        'Passos detectados: ' + ', '.join(f"{name}={step or '?'}h" for name, step in sorted(by_model_steps.items())))
     if not result['spray_joint_hourly']:
         result['warnings'].append('No ensemble has all six variables aligned by member for spraying: no joint screening frequencies')
     if not result['rain_ensemble_daily']:

@@ -14,7 +14,7 @@ concurrency:
   queue: max
 jobs:
   recover:
-    if: github.ref == 'refs/heads/main' && github.event.repository.private == false
+    if: github.ref == 'refs/heads/main' && github.repository == 'joaolorencone-unesp/campo-e-clima'
     runs-on: ubuntu-26.04
     timeout-minutes: 25
     permissions:

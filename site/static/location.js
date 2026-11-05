@@ -84,12 +84,13 @@ function computeModel(payload){
  const h=payload.hourly||{},times=h.time||[];
  const rain=members(payload,'precipitation'),gust=members(payload,'wind_gusts_10m');
  const days={};for(let i=0;i<times.length;i++){const day=times[i].slice(0,10);(days[day]??=[]).push(i);}
- const dR={},dG={},hr={},rainMeans=[];
+ const dR={},dG={},hr={},memberDays={};
  for(const [day,ids] of Object.entries(days).slice(0,7)){
   if(ids.length!==24)continue;
   const rainIds=times.map((t,i)=>({i,day:new Date(Date.parse(t+'Z')-3600000).toISOString().slice(0,10)})).filter(x=>x.day===day).map(x=>x.i);
   const rainComplete=rainIds.length===24 && times[rainIds[0]].slice(11,16)==='01:00' && times[rainIds[23]].slice(11,16)==='00:00' && rainIds.every((i,j)=>!j||Date.parse(times[i]+'Z')-Date.parse(times[rainIds[j-1]]+'Z')===3600000);
-  const r=rainComplete?rain.flatMap(m=>{const v=rainIds.map(i=>m[i]);return m.length===times.length&&v.every(x=>finite(x)&&x>=0)?[v.reduce((a,b)=>a+b,0)]:[];}):[];
+  const r=[];
+  if(rainComplete)rain.forEach((m,index)=>{const v=rainIds.map(i=>m[i]);if(m.length===times.length&&v.every(x=>finite(x)&&x>=0)){const total=v.reduce((a,b)=>a+b,0);r.push(total);(memberDays[index]??={})[day]=total;}});
   const g=gust.flatMap(m=>{const v=ids.map(i=>m[i]);return v.every(x=>finite(x)&&x>=0)?[Math.max(...v)]:[];});
   if(r.length)dR[day]=r;if(g.length)dG[day]=g;
  }
@@ -114,12 +115,69 @@ function computeModel(payload){
   }
   if(Object.keys(row).length)hr[times[i]]=row;
  }
- return {r:dR,g:dG,h:hr,
+ return {r:dR,g:dG,h:hr,memberDays,nativeStep:nativeStepHours(payload),
   member_rain:Math.max(0,...Object.values(dR).map(x=>x.length)),
   member_gust:Math.max(0,...Object.values(dG).map(x=>x.length)),
   member_rain_declared:rain.length,member_gust_declared:gust.length,
   member_rain_by_day:Object.fromEntries(Object.entries(dR).map(([d,x])=>[d,x.length])),
   member_gust_by_day:Object.fromEntries(Object.entries(dG).map(([d,x])=>[d,x.length]))};
+}
+/* Derived rain products — same definitions as scripts/rain_products.py (server side). */
+function nativeStepHours(payload){
+ const h=payload?.hourly||{},times=h.time||[];if(times.length<6)return null;
+ for(let i=1;i<Math.min(25,times.length);i++)if(Date.parse(times[i]+'Z')-Date.parse(times[i-1]+'Z')!==3600000)return null;
+ const runs=new Map();
+ for(const [key,series] of Object.entries(h)){
+  if(!/^precipitation_member\d+$/.test(key)||!Array.isArray(series))continue;
+  let previous=null,length=0;
+  for(const value of [...series,null]){
+   const positive=finite(value)&&value>0;
+   if(positive&&value===previous){length++;continue;}
+   if(previous!==null&&length)runs.set(length,(runs.get(length)||0)+1);
+   previous=positive?value:null;length=positive?1:0;
+  }
+ }
+ let total=0,six=0,three=0,other=0;
+ for(const [length,count] of runs){total+=count;if(length%6===0)six+=count;else if(length%3===0)three+=count;else other+=count;}
+ if(total<3)return null;
+ if(six>=Math.max(3,2*three)&&six>=other)return 6;
+ if(three+six>=Math.max(3,other))return 3;
+ return 1;
+}
+function multiDayTotals(memberDaysByModel,spans=[3,5,7]){
+ const days=[...new Set(Object.values(memberDaysByModel).flatMap(m=>Object.values(m).flatMap(d=>Object.keys(d))))].sort();
+ if(!days.length)return [];
+ const out=[];
+ for(const span of spans){
+  const window=Array.from({length:span},(_,k)=>new Date(Date.parse(days[0]+'T12:00:00Z')+k*86400000).toISOString().slice(0,10));
+  const valid=Object.entries(memberDaysByModel).map(([name,members])=>[name,Object.values(members).filter(m=>window.every(d=>m[d]!==undefined)).map(m=>window.reduce((s,d)=>s+m[d],0))]).filter(([,v])=>v.length);
+  if(!valid.length)continue;
+  const pairs=valid.flatMap(([,values])=>values.map(v=>[v,1/valid.length/values.length]));
+  const row={span_days:span,start:window[0],end:window.at(-1),model_count:valid.length,member_count:pairs.length,mean_mm:pairs.reduce((s,[v,w])=>s+v*w,0),p10_mm:weightedQuantile(pairs,.1),p50_mm:weightedQuantile(pairs,.5),p90_mm:weightedQuantile(pairs,.9)};
+  for(const t of [10,25,50,100])row['p_gt_'+t+'_mm']=pairs.reduce((s,[v,w])=>s+(v>t?w:0),0);
+  out.push(row);
+ }
+ return out;
+}
+function drySpell(memberDaysByModel,dryMm=1){
+ const days=[...new Set(Object.values(memberDaysByModel).flatMap(m=>Object.values(m).flatMap(d=>Object.keys(d))))].sort().slice(0,7);
+ if(!days.length)return null;
+ const valid=Object.entries(memberDaysByModel).map(([name,members])=>[name,Object.values(members).filter(m=>days.every(d=>m[d]!==undefined)).map(m=>{let longest=0,current=0;for(const d of days){current=m[d]<dryMm?current+1:0;longest=Math.max(longest,current);}return longest;})]).filter(([,v])=>v.length);
+ if(!valid.length)return null;
+ const pairs=valid.flatMap(([,values])=>values.map(v=>[v,1/valid.length/values.length]));
+ return {window_days:days.length,start:days[0],end:days.at(-1),dry_day_threshold_mm:dryMm,model_count:valid.length,member_count:pairs.length,p50_days:weightedQuantile(pairs,.5),p90_days:weightedQuantile(pairs,.9),p_ge_3_days:pairs.reduce((s,[v,w])=>s+(v>=3?w:0),0),p_ge_5_days:pairs.reduce((s,[v,w])=>s+(v>=5?w:0),0)};
+}
+function modelAgreementDaily(byModelDays,wetMm=1){
+ const dates=[...new Set(Object.values(byModelDays).flatMap(m=>Object.keys(m)))].sort(),out=[];
+ for(const day of dates){
+  const votes=[],means=[];
+  for(const members of Object.values(byModelDays)){const values=members[day];if(!values?.length)continue;votes.push(values.filter(x=>x>wetMm).length/values.length);means.push(values.reduce((a,b)=>a+b,0)/values.length);}
+  if(!votes.length)continue;
+  const wet=votes.filter(v=>v>=.5).length,dry=votes.length-wet,agreement=Math.max(wet,dry)/votes.length,ordered=means.slice().sort((a,b)=>a-b);
+  const median=ordered.length%2?ordered[(ordered.length-1)/2]:(ordered[ordered.length/2-1]+ordered[ordered.length/2])/2;
+  out.push({date:day,models:votes.length,wet_majority_models:wet,dry_majority_models:dry,agreement_fraction:agreement,agreement_label:agreement>=.75&&votes.length>=3?'alta':agreement>=.5?'media':'baixa',side:wet>dry?'chuva':dry>wet?'seco':'dividido',model_mean_min_mm:ordered[0],model_mean_max_mm:ordered.at(-1),model_mean_median_mm:median,volume_spread_label:(ordered.at(-1)-ordered[0])>Math.max(10,2*median)?'alta':(ordered.at(-1)-ordered[0])>5?'media':'baixa',wet_threshold_mm:wetMm});
+ }
+ return out;
 }
 const JOINT_KEYS=['temperature_2m','relative_humidity_2m','wind_speed_10m','wind_gusts_10m','wind_direction_10m','precipitation'];
 const JOINT_KINDS=['herb','fung','insect'];
@@ -215,15 +273,20 @@ function summarizeEnsembles(results){
   for(const [day,values] of Object.entries(c.r))if(values.length)comparison.push({model:name,date:day,members:values.length,mean_mm:values.reduce((a,b)=>a+b,0)/values.length,p_gt_0_1_mm:values.filter(v=>v>0.1).length/values.length,p_gt_1_mm:values.filter(v=>v>1).length/values.length,p_gt_5_mm:values.filter(v=>v>5).length/values.length});
  }
  const rainD=mix(r,mixRain),gustD=mix(g,mixGust);
+ const steps={},memberDays={};
+ for(const [name,{computed,error}] of Object.entries(results)){if(error)continue;steps[name]=computed.nativeStep;if(computed.memberDays&&Object.keys(computed.memberDays).length)memberDays[name]=computed.memberDays;models[name].precipitation_native_step_hours=computed.nativeStep;}
  const stamps=[...new Set(Object.values(hour).flatMap(x=>Object.keys(x)))].sort();const rainH=[];
  for(const time of stamps){const row={time,windows:{}};for(const duration of [1,3,6]){
-  const modelsV=Object.values(hour).map(x=>x?.[time]?.[duration]).filter(x=>Array.isArray(x)&&x.length);
+  const candidates=Object.entries(hour).map(([name,x])=>[name,x?.[time]?.[duration]]).filter(([,x])=>Array.isArray(x)&&x.length);
+  const eligible=candidates.filter(([name])=>!((steps[name]||0)>duration)),modelsV=eligible.map(([,x])=>x);
   if(!modelsV.length)continue;const pairs=modelsV.flatMap(xs=>xs.map(x=>[x,1/modelsV.length/xs.length]));
-  const v={models:modelsV.length,members:pairs.length,mean_mm:pairs.reduce((s,[x,w])=>s+x*w,0),p10_mm:weightedQuantile(pairs,.1),p50_mm:weightedQuantile(pairs,.5),p90_mm:weightedQuantile(pairs,.9)};
+  const v={models:modelsV.length,members:pairs.length,mean_mm:pairs.reduce((s,[x,w])=>s+x*w,0),p10_mm:weightedQuantile(pairs,.1),p50_mm:weightedQuantile(pairs,.5),p90_mm:weightedQuantile(pairs,.9),models_excluded_by_resolution:candidates.length-modelsV.length};
   for(const threshold of [.1,1,3,5,10,20])v['p_gt_'+String(threshold).replace('.','_')+'_mm']=pairs.reduce((s,[x,w])=>s+(x>threshold?w:0),0);
   row.windows[duration]=v;
  }if(Object.keys(row.windows).length)rainH.push(row);}
- return {rain_ensemble_daily:rainD,gust_ensemble_daily:gustD,rain_ensemble_hourly:rainH,ensemble_models:models,rain_models_daily:comparison,spray_joint_hourly:mixJointEvent(sprayModels,'hour'),spray_joint_windows_2h:mixJointEvent(sprayModels,'window'),spray_joint_model_status:sprayStatuses};
+ return {rain_ensemble_daily:rainD,gust_ensemble_daily:gustD,rain_ensemble_hourly:rainH,ensemble_models:models,rain_models_daily:comparison,
+  rain_ensemble_accumulated:multiDayTotals(memberDays),rain_dry_spell:drySpell(memberDays),rain_model_agreement_daily:modelAgreementDaily(r),
+  spray_joint_hourly:mixJointEvent(sprayModels,'hour'),spray_joint_windows_2h:mixJointEvent(sprayModels,'window'),spray_joint_model_status:sprayStatuses};
 }
 // Consultas por coordenada: primeiro chuva, depois variáveis adicionais.
 // NÃO iniciar 8 consultas complexas de pulverização antes de mostrar os cenários de chuva.
@@ -287,7 +350,7 @@ async function requestSprayEnsembles(point,token,key){
  }
  sprayBusy=true;sprayRunKey=key;sprayLastAttempt={key,at:Date.now()};
  setEnsembleStatus('Ensembles de chuva disponíveis. Consultando separadamente as variáveis conjuntas de pulverização (somente modelos prioritários)…');
- const byModel={},statuses={},gusts={};
+ const byModel={},statuses={},gusts={},agroModels={};
  try{
   for(const name of SPRAY_PRIORITY){
    if(token!==generation)return;
@@ -296,6 +359,7 @@ async function requestSprayEnsembles(point,token,key){
       forecast_hours:80,models:MODELS[name],hourly:JOINT_KEYS.join(',')};
     const payload=await getJSON(pars(OM_ENSEMBLE,params),27);
     if(token!==generation)return;
+    if(window.CampoAgroWeather)agroModels[name]=window.CampoAgroWeather.samples(payload);
     const spray=readJoint(payload),computed=computeModel(payload);
     if(Object.keys(spray.times).length){byModel[name]=spray;statuses[name]={status:'ok',member_fields_complete:spray.members_available};}
     else statuses[name]={status:'indisponivel',detail:'sem membros conjuntos completos'};
@@ -308,6 +372,8 @@ async function requestSprayEnsembles(point,token,key){
     state.spray_joint_hourly=mixJointEvent(byModel,'hour');
     state.spray_joint_windows_2h=mixJointEvent(byModel,'window');
     state.spray_joint_model_status={...statuses};
+    if(window.CampoAgroWeather){state.agro_ensemble_hourly=window.CampoAgroWeather.blend(agroModels);state.agro_ensemble_coverage=window.CampoAgroWeather.coverage?.(agroModels)||{};
+     if(ensembleCache.key===key&&ensembleCache.data){ensembleCache.data.agro_ensemble_hourly=state.agro_ensemble_hourly;ensembleCache.data.agro_ensemble_coverage=state.agro_ensemble_coverage;}}
     if(Object.keys(gusts).length)state.gust_ensemble_daily=mix(gusts,mixGust);
     render();
    }
@@ -324,7 +390,7 @@ async function requestSprayEnsembles(point,token,key){
 function emptyState(point,forecast){return {
  schema_version:9,issued_at_utc:new Date().toISOString(),site:{latitude:point.latitude,longitude:point.longitude,timezone:forecast.timezone,custom:true},
  deterministic:forecast,rain_ensemble_daily:[],gust_ensemble_daily:[],rain_ensemble_hourly:[],rain_models_daily:[],ensemble_models:{},
- spray_joint_hourly:[],spray_joint_windows_2h:[],spray_joint_model_status:{},official:{},embrapa_observations:{state:'not_applicable'},
+ spray_joint_hourly:[],spray_joint_windows_2h:[],spray_joint_model_status:{},agro_ensemble_hourly:[],agro_ensemble_coverage:{},rain_ensemble_accumulated:[],rain_dry_spell:null,rain_model_agreement_daily:[],official:{},embrapa_observations:{state:'not_applicable'},
  complementary:{},sources:{'Open-Meteo Forecast':{state:'ok',source_url:'https://open-meteo.com/en/docs',collected_at_utc:forecast.collected_at_utc}},
  warnings:['Avisos oficiais e estação de Naviraí não se aplicam ao ponto selecionado.','Triagem por ensemble para pulverização não disponível neste modo; a avaliação determinística ainda exige validação local.'],
  _liveForecastAt:forecast.collected_at_utc
@@ -358,9 +424,7 @@ async function refreshCustom(manual=true){
    setEnsembleStatus(`✓ ${cachedCount} modelos válidos de chuva; resultados consultados há ${mins} min. Cache da MESMA coordenada. Frequências não calibradas.`,'good');
    show(`✓ ${cachedCount} ensembles válidos para ${loc.name}, atualizados há ${mins} min.`,'good');
    setRefreshFeedback(`✓ Previsão determinística atualizada. ${cachedCount} ensembles válidos em cache por ${mins} min.`,'good');
-   if(document.querySelector('#tabs button[data-tab="spray"]')?.classList.contains('active') && !(state.spray_joint_hourly||[]).length){
-    void requestSprayEnsembles({...loc},token,key);
-   }
+   if(!(state.agro_ensemble_hourly||[]).length||!(state.spray_joint_hourly||[]).length)void requestSprayEnsembles({...loc},token,key);
    return;
   }
   const recentFailure=ensembleFailureCooldown.key===key && Date.now()-ensembleFailureCooldown.at<3*60*1000;
@@ -396,7 +460,7 @@ async function refreshCustom(manual=true){
    setRefreshFeedback('⚠ Falha nos ensembles; sem percentuais probabilísticos. Previsão determinística mantida.','error');
   }
   render();updateLocationUI();
-  if(n && token===generation && document.querySelector('#tabs button[data-tab="spray"]')?.classList.contains('active'))void requestSprayEnsembles({...loc},token,key);
+  if(n && token===generation)void requestSprayEnsembles({...loc},token,key);
 
  }catch(e){if(token===generation){show('Falha na previsão: '+describeError(e),'error');setRefreshFeedback('⚠ '+describeError(e),'error');}}
  finally{if(token===generation){busy=false;$('refresh').disabled=false;$('refresh').textContent='↻ Atualizar previsão agora';}}
@@ -506,7 +570,7 @@ $('tabs').addEventListener('click',event=>{
  }
 });
 // Existing 30-min polling is handled by app.js. Custom points must never pull Naviraí snapshots.
-window.CampoLocation={isCustom:()=>loc.custom,refreshCustom,select,reset,getPoint:()=>({...loc}),_test:{parseNASA,computeModel,summarizeEnsembles,weightedQuantile,validate,readJoint,jointAssessment,mixJointEvent,requestEnsembles,usableModelRain,validEnsembleCount}};
+window.CampoLocation={isCustom:()=>loc.custom,refreshCustom,select,reset,getPoint:()=>({...loc}),_test:{parseNASA,computeModel,summarizeEnsembles,weightedQuantile,validate,readJoint,jointAssessment,mixJointEvent,requestEnsembles,usableModelRain,validEnsembleCount,nativeStepHours,multiDayTotals,drySpell,modelAgreementDaily}};
 updateLocationUI();
 try{
  const url=new URL(window.location.href),lat=url.searchParams.get('lat'),lon=url.searchParams.get('lon');

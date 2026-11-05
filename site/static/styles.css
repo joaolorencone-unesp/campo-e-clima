@@ -138,3 +138,53 @@
 .precision-filters{flex-wrap:wrap}.precision-filters label{min-width:145px}#precision-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:16px 0}#precision .plot{min-height:260px}#precision .caption{overflow-wrap:anywhere}
 
 .precision-filters input[type=date]{width:100%;box-sizing:border-box;min-height:42px;padding:9px 12px;border:1px solid #bdd5e4;border-radius:8px;color:#164565;font:inherit;background:#fff}
+
+/* ===== Campo e Clima v3 — two levels of use, grouped navigation, farm summary ===== */
+:root{--c-ink:#152a3a;--c-muted:#5b7384;--c-line:#d8e3ea;--c-accent:#0b6e9a;--c-accent-2:#1f8a70;--c-wet:#1d6fb8;--c-hot:#c2502f;--c-wind:#8a6d1f;--c-paper:#fff}
+body{font-size:15px;color:var(--c-ink)}h2{letter-spacing:-.02em}h3{font-weight:760}
+.masthead{background:linear-gradient(118deg,#fbfdff 0%,#eaf4fa 46%,#e3eef5 100%)}
+.masthead-inner{align-items:flex-start}
+.mode-switch{display:inline-flex;border:1px solid #bcd3e0;border-radius:999px;padding:3px;background:#fff;gap:3px}
+.mode-switch button{border:0;border-radius:999px;padding:7px 14px;font-size:12px;font-weight:760;color:#3b5a6e;background:transparent;cursor:pointer}
+.mode-switch button.active{background:#0b6e9a;color:#fff}
+.nav-groups{display:flex;gap:6px;flex-wrap:wrap;margin:14px 0 4px}
+.nav-groups button{border:1px solid #c9dbe5;background:#f6fafc;color:#2e4f63;border-radius:999px;padding:7px 13px;font-size:12px;font-weight:740;cursor:pointer}
+.nav-groups button.active{background:#153c59;border-color:#153c59;color:#fff}
+.tabs{display:flex;gap:14px;flex-wrap:wrap;align-items:stretch;position:static;background:transparent;padding:6px 0 14px}
+.tab-group{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:6px 8px 6px 0;border-right:1px solid #dbe6ed}
+.tab-group:last-child{border-right:0}
+.tab-group-label{display:none;font-size:10px;letter-spacing:.12em;color:#7a93a3;font-weight:800;text-transform:uppercase;width:100%}
+.tabs[data-active-group] .tab-group{opacity:.78}.tabs[data-active-group="overview"] .tab-group[data-group="overview"],.tabs[data-active-group="rain"] .tab-group[data-group="rain"],.tabs[data-active-group="operations"] .tab-group[data-group="operations"],.tabs[data-active-group="maps"] .tab-group[data-group="maps"],.tabs[data-active-group="science"] .tab-group[data-group="science"]{opacity:1}
+.tabs button{padding:9px 12px;font-size:13px;border-radius:9px}
+body.mode-simple .advanced-only{display:none!important}
+body.mode-simple .tab-group-label{display:block}
+body.mode-simple .tab-group{border-right:0;padding-right:0}
+body.mode-simple .tabs{gap:8px}
+/* Farm summary */
+.farm-summary{background:linear-gradient(135deg,#ffffff 0%,#f3f9fc 100%);border-color:#cfe0ea;padding:24px 26px}
+.farm-head h2{font-size:clamp(22px,2.4vw,30px);margin:8px 0 6px;color:#12324a}.farm-head p{margin:0;font-size:13px;color:#5d7686}
+.farm-cards{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin:18px 0}
+.farm-card{display:flex;flex-direction:column;gap:5px;border:1px solid #d9e6ee;border-radius:14px;padding:14px 14px 12px;background:#fff;min-height:132px}
+.farm-card .label{font-size:11px;color:#5f7888;font-weight:700;letter-spacing:.02em}
+.farm-card strong{font-size:clamp(19px,1.8vw,24px);letter-spacing:-.03em;color:#14374f;line-height:1.15}
+.farm-card .detail{font-size:12px;color:#3f5c6e;line-height:1.4}.farm-card small{font-size:10.5px;color:#7d94a3;line-height:1.35;margin-top:auto}
+.farm-card.tone-wet{border-color:#a9cdea;background:linear-gradient(180deg,#fff,#eef6fc)}.farm-card.tone-hot{border-color:#efbfae;background:linear-gradient(180deg,#fff,#fdf1ec)}.farm-card.tone-windy{border-color:#e6d3a0;background:linear-gradient(180deg,#fff,#fbf5e6)}
+.farm-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.farm-block{border:1px solid #dce8ef;border-radius:14px;padding:14px 16px;background:#fff}
+.farm-block h3{font-size:14px;margin:0 0 9px;color:#1c4058}.farm-block p{font-size:13px;color:#33505f;margin:0 0 8px;line-height:1.55}.farm-block small{display:block;font-size:11px;color:#7b919f;line-height:1.4;margin-top:6px}
+.risk-list,.window-list{margin:0;padding:0;list-style:none;display:grid;gap:7px}
+.risk-list li{font-size:13px;line-height:1.45;padding:8px 10px 8px 12px;border-left:4px solid #c9d6de;border-radius:6px;background:#f7fafc;color:#2f4a5a}
+.risk-list li.risk-heavy_rain{border-color:#1d6fb8}.risk-list li.risk-gust{border-color:#8a6d1f}.risk-list li.risk-heat,.risk-list li.risk-vpd{border-color:#c2502f}.risk-list li.risk-dry{border-color:#b7860b}.risk-list li.risk-inmet{border-color:#b9374e;background:#fff5f6}.risk-list li.risk-none{border-color:#1f8a70;background:#f1faf6}
+.window-list li{font-size:13px;padding:8px 10px;border-radius:8px;background:#eef7f2;border:1px solid #cfe7dc;color:#1e5a46}
+/* Agreement badges, run change, freshness, diagnostics */
+.agree{display:inline-block;padding:3px 8px;border-radius:6px;font-size:12px;font-weight:740;background:#eef2f5;color:#4b6676}.agree.ok{background:#e4f5ed;color:#176a4e}.agree.warn{background:#fff2d8;color:#8d5a16}.agree.bad{background:#fde7e9;color:#9b3a3f}
+#run-change tr.changed td{background:#fff8e8;font-weight:650}
+#freshness-body tr.bad td{color:#9b3a3f}
+.diag-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:10px 0 16px}
+.diag-kpi{border:1px solid #dbe7ee;border-radius:12px;padding:13px;background:#fff;display:flex;flex-direction:column;gap:4px}
+.diag-kpi small{font-size:11px;color:#60798a;font-weight:650}.diag-kpi strong{font-size:22px;color:#153c59;letter-spacing:-.02em}.diag-kpi strong small{font-size:12px;color:#7d94a3;font-weight:600}.diag-kpi span{font-size:11px;color:#6f8797}
+@media(max-width:1180px){.farm-cards{grid-template-columns:repeat(3,minmax(0,1fr))}.farm-grid{grid-template-columns:1fr}.diag-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){.farm-summary{padding:16px}.farm-cards{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.farm-card{padding:11px;min-height:0}.farm-card strong{font-size:18px}.head-controls{gap:10px}.mode-switch{align-self:flex-start}.tab-group{border-right:0;padding-right:0}.tabs{gap:8px}.nav-groups{margin-top:10px}}
+@media(max-width:480px){.farm-cards{grid-template-columns:1fr 1fr}.farm-card .note{display:none}.diag-grid{grid-template-columns:1fr}.mode-switch button{padding:6px 10px;font-size:11px}}
+
+body.mode-simple .masthead-inner{padding-top:22px;padding-bottom:18px}body.mode-simple h1{font-size:clamp(32px,4vw,46px)}body.mode-simple .point-panel{padding:16px 20px;margin:14px 0 10px}body.mode-simple .point-top h2{font-size:18px;margin:4px 0}
