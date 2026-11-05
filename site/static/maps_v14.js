@@ -13,7 +13,8 @@
   'GOES-East_ABI_Band13_Clean_Infrared':{step:10,latency:40,matrix:'GoogleMapsCompatible_Level6',maxNative:6,label:'GOES-East infravermelho (banda 13)',ext:'png'},
   'GOES-East_ABI_Air_Mass':{step:10,latency:40,matrix:'GoogleMapsCompatible_Level6',maxNative:6,label:'GOES-East massas de ar',ext:'png'},
   'IMERG_Precipitation_Rate_30min':{step:30,latency:240,matrix:'GoogleMapsCompatible_Level6',maxNative:6,label:'IMERG taxa de chuva (30 min)',ext:'png'},
-  'GOES-East_GLM_Flash_Extent_Density':{step:10,latency:40,matrix:'GoogleMapsCompatible_Level6',maxNative:6,label:'GOES GLM densidade de relâmpagos (experimental)',ext:'png'}};
+  'GOES-East_ABI_FireTemp':{step:10,latency:40,matrix:'GoogleMapsCompatible_Level6',maxNative:6,label:'GOES-East temperatura de fogo (focos de queimada)',ext:'png'},
+  'GOES-East_ABI_Band2_Red_Visible_1km':{step:10,latency:40,matrix:'GoogleMapsCompatible_Level7',maxNative:7,label:'GOES-East visível 1 km (só de dia)',ext:'png'}};
  const GOES_FRAMES=18;let goesFrames=[],goesIndex=GOES_FRAMES-1,goesTimer=null,goesLayers=new Map(),goesBackoff=0;
  let map=null,selectedMarker=null,weatherLayer=null,imageLayer=null,forecast=null,pointKey=null,lastAt=0;
  let hourIndex=0,requestId=0,playing=null,imageLoaded=0,imageErrors=0;

@@ -49,9 +49,11 @@ Radar meteorológico brasileiro (DECEA/REDEMET com chave gratuita, SIMEPAR, CEMA
 
 | Fonte | Uso | Licença/limites | Estado |
 |---|---|---|---|
-| CEMADEN — pluviômetros automáticos (`sws.cemaden.gov.br/PED/rest`) | chuva observada 24 h até 80 km | dados públicos federais; formato não documentado formalmente | integrado com parsers tolerantes; formato confirmado pelo job `sources-probe` |
+| CEMADEN — pluviômetros automáticos (`sws.cemaden.gov.br/PED/rest`) | chuva observada 24 h até 80 km | dados públicos federais; **exige token** (gratuito, solicitado ao CEMADEN; confirmado em 05/11/2026: HTTP 400 sem token) | integrado; estado `requires_registration` até existir o segredo `CEMADEN_TOKEN` |
 | INMET avisos RSS (`apiprevmet3.inmet.gov.br/avisos/rss`) | redundância dos avisos oficiais | público | integrado como caminho secundário |
 | INMET WIS 2.0 (`wis2bra.inmet.gov.br/oapi`) | observações SYNOP padronizadas (candidato a substituir o token do apitempo) | OGC API pública | sondado pelo `sources-probe`; integração depende da cobertura de S735/A949 |
-| NASA GIBS `GOES-East_GLM_Flash_Extent_Density` | relâmpagos observados | NASA, agradecimento obrigatório | experimental: identificador a confirmar no GetCapabilities |
-| CPTEC/INPE MERGE (`data.inpe.br/bdc/data/prec_merge_daily/FIG/DAILY`) | figura diária de chuva observada | não comercial, citar CPTEC/INPE | padrão de URL inferido; validado pelo `sources-probe` |
+| NASA GIBS GOES-East (`GOES-East_ABI_FireTemp`, `GOES-East_ABI_Band2_Red_Visible_1km`) | focos de queimada e visível 1 km | NASA, agradecimento obrigatório | identificadores confirmados no GetCapabilities (05/11/2026); **não há camada GLM de relâmpagos** no serviço EPSG:3857 |
+| CPTEC/INPE MERGE (`data.inpe.br/bdc/data/prec_merge_daily/FIG/DAILY`) | figura diária de chuva observada | não comercial, citar CPTEC/INPE | URL confirmada (HTTP 200, PNG de 735 kB para 04/11/2026) |
 | radarmeteorologico.com.br | — | site de terceiros sem termos claros | não adotado |
+
+Sondagem de 05/11/2026 (`sources-probe`): INMET avisos JSON e RSS respondendo (77 itens no RSS); INMET WIS 2.0 lista Diamantino como estação convencional 83309 (WIGOS 0-20000-0-83309) com SYNOP horário, candidata a observação ao vivo sem token numa próxima versão; Naviraí não apareceu no catálogo WIS 2.0.

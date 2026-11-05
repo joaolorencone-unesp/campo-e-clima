@@ -3,7 +3,9 @@
 Free public service (Centro Nacional de Monitoramento e Alertas de Desastres Naturais).
 Endpoints are the ones used by CEMADEN's own data platform; their formats are not formally
 documented, so both parsers are tolerant and every failure is reported, never hidden.
-Disabled unless ``CEMADEN_ENABLE=1`` (offline tests and local runs stay network-free).
+Disabled unless ``CEMADEN_ENABLE=1`` (offline tests and local runs stay network-free). The
+service answers HTTP 400 "O parâmetro token não pode ser vazio" without a token (confirmed
+05/11/2026): CEMADEN issues tokens free of charge on request; set ``CEMADEN_TOKEN`` as a secret.
 """
 from __future__ import annotations
 import csv
@@ -107,17 +109,20 @@ def collect_cemaden(lat: float, lon: float, *, location_id: str = 'navirai', rad
             'note': 'Leituras de pluviômetros públicos próximos; chuva medida nos últimos 24 h, não previsão. Distâncias em linha reta.'}
     if not enabled:
         return {**base, 'state': 'disabled'}
+    token = os.environ.get('CEMADEN_TOKEN', '').strip()
+    if not token:
+        return {**base, 'state': 'requires_registration', 'note': base['note'] + ' O serviço exige token (gratuito, solicitado ao CEMADEN); defina o segredo CEMADEN_TOKEN.'}
     uf = UF_BY_LOCATION.get(location_id, 'MS')
     session = session or requests.Session()
     headers = {'User-Agent': 'Campo-e-Clima/4.1 (pesquisa não comercial)'}
     try:
-        catalog = session.get(f'{BASE}/pcds-cadastro/estacoes', params={'uf': uf}, timeout=30, headers=headers)
+        catalog = session.get(f'{BASE}/pcds-cadastro/estacoes', params={'uf': uf, 'token': token}, timeout=30, headers=headers)
         catalog.raise_for_status()
         stations = parse_stations(catalog.json(), lat, lon, radius_km=radius_km)
         if not stations:
             return {**base, 'state': 'no_station_in_range', 'radius_km': radius_km, 'uf': uf}
         since = now - dt.timedelta(hours=24)
-        params = {'rede': 11, 'uf': uf, 'inicio': since.strftime('%Y%m%d%H%M'), 'fim': now.strftime('%Y%m%d%H%M')}
+        params = {'rede': 11, 'uf': uf, 'inicio': since.strftime('%Y%m%d%H%M'), 'fim': now.strftime('%Y%m%d%H%M'), 'token': token}
         ibges = sorted({s['ibge'] for s in stations if s['ibge']})
         rain: dict[str, dict] = {}
         for ibge in ibges[:6]:
@@ -129,4 +134,4 @@ def collect_cemaden(lat: float, lon: float, *, location_id: str = 'navirai', rad
             s.update(rain.get(s['code'], {'rain_24h_mm': None, 'readings': 0, 'last_reading_utc': None}))
         return {**base, 'state': 'ok', 'radius_km': radius_km, 'uf': uf, 'stations': stations[:12], 'with_readings': sum(1 for s in stations if s['readings'])}
     except (requests.RequestException, ValueError, TypeError, KeyError) as exc:
-        return {**base, 'state': 'unavailable', 'error': f'{type(exc).__name__}: {str(exc)[:140]}'}
+        return {**base, 'state': 'unavailable', 'error': f'{type(exc).__name__}: {str(exc)[:140]}'.replace(token, '***')}
