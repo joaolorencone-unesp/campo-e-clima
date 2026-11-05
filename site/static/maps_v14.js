@@ -141,7 +141,7 @@
     radarStatus('Radar indisponível nesta consulta ('+(err.name==='AbortError'?'tempo limite':String(err.message).slice(0,65))+'). Consulte os visualizadores oficiais do INMET/INPE.','bad');}
   }finally{clearTimeout(timeout);if(radarRequest===abort)radarRequest=null;}
  }
- function setRadarMode(){clearRadarCache();clearTimeLayers();productTitle();updateProductLegend();
+ function setRadarMode(){clearRadarCache();clearTimeLayers();if(el('goes-control'))el('goes-control').hidden=radarActive()||!timeLayerActive();productTitle();updateProductLegend();
   if(radarActive()){
    pause();weatherLayer?.clearLayers();
    for(const id of ['map-hour','map-previous','map-next','map-play','map-refresh'])if(el(id))el(id).disabled=true;
@@ -186,7 +186,7 @@
  function goesLabel(iso){const d=new Date(iso);let local;try{local=new Intl.DateTimeFormat('pt-BR',{dateStyle:'short',timeStyle:'short',timeZone:tz()}).format(d);}catch(_){local=iso;}const age=Math.round((Date.now()-d.getTime())/60000);return `${local} (local) · ${iso.slice(11,16)} UTC · há ${age} min`;}
  function clearTimeLayers(){for(const l of goesLayers.values())if(map?.hasLayer(l))map.removeLayer(l);goesLayers.clear();if(goesTimer){clearInterval(goesTimer);goesTimer=null;}const b=el('goes-play');if(b)b.textContent='▶ Animar nuvens';}
  function showTimeFrame(index){
-  if(!map||!timeLayerActive()||!goesFrames.length)return;
+  if(!map||radarActive()||!timeLayerActive()||!goesFrames.length)return;
   goesIndex=clamp(index,0,goesFrames.length-1);const layer=el('map-satellite').value,iso=goesFrames[goesIndex],cfg=TIME_LAYERS[layer];
   el('goes-frame').value=String(goesIndex);el('goes-time').textContent=goesLabel(iso);
   let tile=goesLayers.get(iso);
@@ -200,7 +200,7 @@
   if(goesLayers.size>6){for(const [k,l] of goesLayers){if(k!==iso&&Math.abs(goesFrames.indexOf(k)-goesIndex)>2){map.removeLayer(l);goesLayers.delete(k);}}}
  }
  function toggleGoesPlay(){if(goesTimer){clearInterval(goesTimer);goesTimer=null;el('goes-play').textContent='▶ Animar nuvens';return;}
-  if(!goesFrames.length)return;el('goes-play').textContent='⏸ Pausar';if(goesIndex>=goesFrames.length-1)goesIndex=-1;
+  if(!goesFrames.length||radarActive())return;el('goes-play').textContent='⏸ Pausar';if(goesIndex>=goesFrames.length-1)goesIndex=-1;
   goesTimer=setInterval(()=>{if(!el('maps').classList.contains('active')||!timeLayerActive()){toggleGoesPlay();return;}showTimeFrame(goesIndex>=goesFrames.length-1?0:goesIndex+1);},1100);}
  function drawTimeLayer(){
   const layer=el('map-satellite').value;clearTimeLayers();if(!goesFrames.length){goesBackoff=0;goesFrames=timeFrames(layer);}

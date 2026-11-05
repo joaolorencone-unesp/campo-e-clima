@@ -22,7 +22,8 @@
  function render(product){
   const status=$('models-compare-status'),table=$('models-compare-table'),plot=$('models-compare-plot');
   if(!status||!table)return;
-  if(!product||product.state!=='ok'){status.textContent='Comparação multimodelo indisponível nesta coleta'+(product?.error?` (${product.error})`:'')+'.';status.className='notice muted';table.innerHTML='';return;}
+  if(!product||product.state!=='ok'){status.textContent='Comparação multimodelo indisponível nesta coleta'+(product?.error?` (${product.error})`:'')+'.';status.className='notice muted';table.innerHTML='';
+   if(plot&&root.Plotly&&plot.classList.contains('js-plotly-plot'))root.Plotly.purge(plot);if(plot)plot.innerHTML='';return;}
   const list=rows(product),info=summary(product);
   status.className='notice';
   status.innerHTML=`<strong>${info.ok} modelos determinísticos</strong> no mesmo ponto, coleta ${esc(new Date(product.collected_at_utc).toLocaleString('pt-BR'))}.${info.fallback?' '+esc(info.fallback)+'.':''}${info.missing.length?` <small>Indisponíveis: ${esc(info.missing.join(' · '))}</small>`:''}`;

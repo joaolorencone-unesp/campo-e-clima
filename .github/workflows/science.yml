@@ -24,10 +24,6 @@ jobs:
       - run: pip install -r requirements-science.txt
       - name: Offline scientific regression
         run: python -m pytest -q tests/test_science_v22.py
-      - name: Daily fixed-lead deterministic history (bounded seven days)
-        env:
-          INMET_API_TOKEN: ${{ secrets.INMET_API_TOKEN }}
-        run: python -m scripts.science_daily
       - name: Restore station forecast cache (Previous Runs, 30-day TTL)
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -36,6 +32,10 @@ jobs:
           restore-keys: |
             station-previous-runs-v40-${{ hashFiles('data/stations/stations.json') }}-
             station-previous-runs-v40-
+      - name: Daily fixed-lead deterministic history (bounded seven days)
+        env:
+          INMET_API_TOKEN: ${{ secrets.INMET_API_TOKEN }}
+        run: python -m scripts.science_daily
       # Physical stations: observations supplied in data/stations, forecasts fetched at the station
       # coordinates, corrections validated out of sample. Failures never block the archive.
       - name: Station verification and bias correction (free Previous Runs API)

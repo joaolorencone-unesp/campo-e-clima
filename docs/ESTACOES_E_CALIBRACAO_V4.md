@@ -60,7 +60,7 @@ Métricas publicadas por estação × modelo × antecedência × variável: n, M
 
 ## 7. Onde os resultados aparecem
 
-- Aba **Observações** → painel "Estações físicas": últimos dias medidos, melhor modelo por variável em D1, matriz de MAE por antecedência com selo ✓ e ganho quando há correção validada, viés da temperatura por hora do dia, série de chuva medido × previsto D1 e o botão "Consultar previsão corrigida", que pede ao Open-Meteo a previsão atual no ponto da estação e aplica no navegador apenas as correções validadas, sempre ao lado do valor bruto (hoje e D4–D6 usam a antecedência validada mais próxima e são marcados como aproximação).
+- Aba **Observações** → painel "Estações físicas": últimos dias medidos, melhor modelo por variável em D1, matriz de MAE por antecedência com selo ✓ e ganho quando há correção validada, viés da temperatura por hora do dia, série de chuva medido × previsto D1 e o botão "Consultar previsão corrigida", que pede ao Open-Meteo a previsão atual no ponto da estação e aplica no navegador apenas as correções validadas, sempre ao lado do valor bruto (hoje usa D1, D4 e D5 usam D3 e D6 usa D7, sempre marcados como aproximação; para a média multimodelo o navegador reproduz o mesmo preditor da verificação: média horária dos membros e extremos do dia local a partir das horas).
 - **Visão geral** (modo simples): cartão com o último dia completo medido e a conferência do dia anterior (previsto D1 × medido).
 - Arquivos: `site/data/stations/index.json` e `site/data/stations/<slug>.json` (ver [Dicionário de dados](DATA_DICTIONARY.md)).
 

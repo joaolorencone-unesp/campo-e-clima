@@ -106,9 +106,11 @@ def publish(captures,root,*,push=False,train=False):
     stations_src=Path(os.environ.get('STATION_REPORTS_DIR','runtime/stations_public'))
     if stations_src.is_dir() and (stations_src/'index.json').exists():
         from scripts.science.common import atomic
-        for p in stations_src.glob('*.json'):
+        import re as _re
+        names=[p for p in stations_src.glob('*.json') if _re.fullmatch(r'[a-z0-9_\-]+\.json',p.name)]
+        for p in names:
             atomic(root/'public'/'stations'/p.name,p.read_bytes())
-        out.append({'state':'stations_published','files':sorted(p.name for p in stations_src.glob('*.json'))})
+        out.append({'state':'stations_published','files':sorted(p.name for p in names)})
     storage=inventory(root);warn(storage)
     failures=[x for x in out if x['state'] in ('failed','source_unavailable')]
     update_status=changed or reports_refreshed or not previous or previous.get('storage',{}).get('severity')!=storage['severity'] or previous.get('failures')!=failures

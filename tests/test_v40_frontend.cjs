@@ -10,7 +10,7 @@ const state={site:{id:'navirai',utc_offset_seconds:-14400},
  deterministic:{utc_offset_seconds:-14400,daily:{time:days,temperature_2m_max:[31,33,28,27,30,32,34,35],temperature_2m_min:[18,20,17,15,16,19,21,22],precipitation_sum:[0.2,12.4,25,3,0,0,0,1],wind_gusts_10m_max:[28,45,52,30,25,22,20,30]},
   hourly:{time:hours,temperature_2m:hours.map(()=>25),precipitation:hours.map((_,i)=>i%24===15?2:0),wind_speed_10m:hours.map(()=>8),wind_gusts_10m:hours.map(()=>20),relative_humidity_2m:hours.map(()=>60),cloud_cover:hours.map((_,i)=>i<24?20:80)}},
  rain_ensemble_daily:days.slice(0,7).map((d,k)=>({date:d,p50_mm:[0,10,18,2,0,0,0][k],p10_mm:0,p90_mm:[2,24,40,8,1,0,2][k],p_gt_1_mm:[.1,.8,.9,.4,.05,.0,.1][k],p_gt_20_mm:[0,.3,.45,0,0,0,0][k],model_count:8})),
- rain_model_agreement_daily:[{date:days[1],agreement_label:'alta',side:'chuva'},{date:days[2],agreement_label:'media',side:'dividido'}],
+ rain_model_agreement_daily:[{date:days[1],agreement_label:'alta',side:'chuva'},{date:days[2],agreement_label:'media',side:'dividido'},{date:days[3],agreement_label:'alta',side:'seco'}],
  gust_ensemble_daily:[{date:days[2],p_gt_30_kmh:.6}],
  rain_ensemble_accumulated:[{span_days:7,p50_mm:41,p10_mm:18,p90_mm:70,p_gt_25_mm:.78,model_count:8}],
  deterministic_models:{state:'ok',collected_at_utc:'2026-11-05T12:00:00Z',models:{ecmwf_ifs025:{state:'ok',label:'ECMWF',daily:{time:days.slice(0,7),precipitation_sum:[0,8,20,1,0,0,0],temperature_2m_max:[30,32,27,27,30,31,33],temperature_2m_min:[18,19,16,15,16,18,20],wind_gusts_10m_max:[25,40,50,30,25,20,20]}},
@@ -28,9 +28,13 @@ assert.equal(board[1].p50,10);assert.equal(board[1].agreement,'alta');assert.equ
 assert.equal(JSON.stringify(board[1].models_spread),JSON.stringify({min:8,max:15,wet:2,n:2}));
 assert.equal(weekly.pickIcon({p_gt_1:.2,cloud:80}),'cloud');assert.equal(weekly.pickIcon({p_gt_20:.35,cape:1500}),'storm');
 const weeks=weekly.buildWeeks(state,now);
-assert.equal(weeks[0].label,'Esta semana');assert.match(weeks[0].rain,/41 mm/);assert.equal(weeks[0].confidence,'média a alta');
+assert.equal(weeks[0].label,'Esta semana');assert.match(weeks[0].rain,/41 mm/);assert.equal(weeks[0].confidence,'alta','majority of agreement labels over the week');
+assert.equal(weekly.buildWeeks({...state,rain_model_agreement_daily:[]},now)[0].confidence,'sem leitura');
+assert.equal(weekly.buildWeeks({...state,rain_ensemble_accumulated:[]},now)[0].confidence,'—','deterministic-only week has no confidence statement');
 assert.equal(weeks[1].label,'Próxima semana');assert.equal(weeks[1].rain,'—','only one deterministic day beyond day 7: no weekly total invented');
-assert.ok(weeks.some(w=>w.kind==='gefs'&&/≈/.test(w.rain)),'GEFS week 3+ as approximate tendency');
+assert.ok(weeks.some(w=>w.kind==='gefs'&&/≈/.test(w.rain)&&w.confidence==='tendência'),'GEFS week 3+ as approximate tendency');
+const gefsMissing={...state,complementary:{...state.complementary,gefs_extended:{...state.complementary.gefs_extended,days:state.complementary.gefs_extended.days.map((d,i)=>i%2?{...d,mean_mm:null}:d)}}};
+assert.ok(weekly.buildWeeks(gefsMissing,now).filter(w=>w.kind==='gefs').every(w=>/dias com valor/.test(w.range)),'missing GEFS days are not summed as zero');
 assert.ok(weeks.some(w=>w.kind==='ecmwf'&&/acima do normal/.test(w.range)));
 assert.ok(!weeks.some(w=>w.kind==='ecmwf'&&w.period.includes('23/11')&&false));
 const noState=weekly.buildDays({},now);assert.equal(noState.length,0);
@@ -52,6 +56,15 @@ const qm={method:'quantile_map',threshold:1,qx:[1,5,10],qy:[0.5,8,20]};
 assert.equal(stations.applyCorrection(qm,0.5),0,'below the wet threshold → dry');
 assert.equal(stations.applyCorrection(qm,5),8);assert.equal(stations.applyCorrection(qm,7.5),14);assert.equal(stations.applyCorrection(qm,20),40,'beyond the table scales by the top ratio');
 assert.equal(stations._test.clip('rain_mm',-2),0);assert.equal(stations._test.clip('relative_humidity_2m',104),100);
+assert.equal(stations.applyCorrection({...qm,threshold:0.5},0.8),0.5,'between the wet threshold and the first knot the mapping clamps to the first observed quantile (np.interp)');
+assert.deepEqual([0,1,2,3,4,5,6].map(stations._test.leadFor),[1,1,2,3,3,3,7]);
+assert.equal(stations.locationIdFor({latitude:-14.408,longitude:-56.446,custom:true}),'diamantino');assert.equal(stations.locationIdFor({latitude:-20,longitude:-50}),null);
+const hourlyTimes=Array.from({length:49},(_,i)=>new Date(Date.UTC(2026,10,5,4)+i*3600000).toISOString().slice(0,16)); // 00:00 local 5 Nov .. 00:00 local 7 Nov
+const hourlyDays=stations._test.localDaysFromHourly(hourlyTimes,{temperature_2m:hourlyTimes.map((_,i)=>20+(i%24===14?10:0)),precipitation:hourlyTimes.map((_,i)=>i===30?3:0)},-4);
+const d5=hourlyDays.find(d=>d.date==='2026-11-05'),d6=hourlyDays.find(d=>d.date==='2026-11-06');
+assert.equal(d5.t_max,30);assert.equal(d5.rain_mm,0);assert.equal(d6.rain_mm,3,'rain labelled 06:00 local belongs to day 2');assert.equal(d6.t_max,30);
+assert.equal(hourlyDays.find(d=>d.date==='2026-11-04').rain_mm,null,'the partial first day is never summed');
+const bulletinApi=load('site/static/bulletin_v40.js').CampoBulletin;assert.equal(bulletinApi.locationIdFor({latitude:-23.0651,longitude:-54.1899}),'navirai');
 const report={verification:[{model:'m',lead_days:1,variable:'t_max',status:'evaluated',raw_all_pairs:{mae:1.5,bias:.8,n:150},recommended:{method:'bias',parameters:{method:'bias',bias:-.8},evidence:{mae_raw:1.5,mae_corrected:1.2,skill_mae:.2,delta_mae_ci95:[-.4,-.1]}}},
  {model:'m',lead_days:2,variable:'t_max',status:'evaluated',raw_all_pairs:{mae:1.9,bias:.9,n:150},recommended:null},{model:'m',lead_days:7,variable:'t_max',status:'insufficient_pairs',n_pairs:3}]};
 const html=stations.matrix(report,'t_max');

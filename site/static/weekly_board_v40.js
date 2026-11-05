@@ -64,16 +64,20 @@
   const sumDet=(from,to)=>{const vals=(det.time||[]).map((d,i)=>[d,det.precipitation_sum?.[i]]).filter(([d])=>d>=from&&d<=to).map(([,v])=>v);return vals.length&&vals.every(finite)?{sum:vals.reduce((a,b)=>a+b,0),days:vals.length}:null;};
   const addDays=(iso,n)=>new Date(Date.parse(iso+'T12:00:00Z')+n*86400000).toISOString().slice(0,10);
   const w1=sumDet(today,addDays(today,6)),w2=sumDet(addDays(today,7),addDays(today,13));
+  // Confidence of the week comes from the published agreement between models (majority label), never from a fixed text.
+  const labels=(state?.rain_model_agreement_daily||[]).filter(a=>a.date>=today&&a.date<=addDays(today,6)).map(a=>a.agreement_label).filter(Boolean);
+  const count=l=>labels.filter(x=>x===l).length;
+  const weekConfidence=!acc?'—':labels.length<3?'sem leitura':count('alta')>labels.length/2?'alta':count('baixa')>labels.length/2?'baixa':'média';
   rows.push({label:'Esta semana',period:`${today.slice(8,10)}/${today.slice(5,7)}–${addDays(today,6).slice(8,10)}/${addDays(today,6).slice(5,7)}`,
-   rain:acc?`${fmt(acc.p50_mm)} mm`:w1?`${fmt(w1.sum)} mm`:'—',range:acc?`P10–P90 ${fmt(acc.p10_mm)}–${fmt(acc.p90_mm)} mm · ${pct(acc.p_gt_25_mm)} dos membros acima de 25 mm`:'determinístico',
-   source:acc?`${acc.model_count} ensembles`:'Open-Meteo determinístico',confidence:acc?'média a alta':'média',kind:'ensemble'});
+   rain:acc?`${fmt(acc.p50_mm)} mm`:w1?`${fmt(w1.sum)} mm`:'—',range:acc?`P10–P90 ${fmt(acc.p10_mm)}–${fmt(acc.p90_mm)} mm · ${pct(acc.p_gt_25_mm)} dos membros acima de 25 mm${labels.length?` · concordância ${weekConfidence} em ${labels.length} dias`:''}`:'determinístico, sem distribuição de ensemble',
+   source:acc?`${acc.model_count} ensembles`:'Open-Meteo determinístico',confidence:weekConfidence,kind:'ensemble'});
   rows.push({label:'Próxima semana',period:`${addDays(today,7).slice(8,10)}/${addDays(today,7).slice(5,7)}–${addDays(today,13).slice(8,10)}/${addDays(today,13).slice(5,7)}`,
    rain:w2&&w2.days>=5?`${fmt(w2.sum)} mm`:'—',range:w2?`${w2.days} dias com previsão determinística; sem distribuição de ensemble`:'sem previsão diária',source:'Open-Meteo determinístico (dias 8–14)',confidence:'baixa',kind:'deterministic'});
   const gefs=state?.complementary?.gefs_extended;
   if(gefs?.state==='ok'&&Array.isArray(gefs.days)){
    const byWeek={};for(const d of gefs.days){const off=Math.round((Date.parse(d.date+'T12:00:00Z')-Date.parse(today+'T12:00:00Z'))/86400000);if(off<14)continue;const w=Math.floor(off/7);(byWeek[w]??=[]).push(d);}
-   for(const [w,days] of Object.entries(byWeek)){if(days.length<5)continue;const mean=days.reduce((s,d)=>s+(d.mean_mm||0),0);
-    rows.push({label:`Semana ${Number(w)+1}`,period:`${days[0].date.slice(8,10)}/${days[0].date.slice(5,7)}–${days.at(-1).date.slice(8,10)}/${days.at(-1).date.slice(5,7)}`,rain:`≈ ${fmt(mean)} mm`,range:`soma das médias diárias do GEFS (${days.length} dias; ${gefs.member_count} membros de um só modelo)`,source:'NOAA GEFS estendido',confidence:'baixa',kind:'gefs'});}
+   for(const [w,days] of Object.entries(byWeek)){const vals=days.map(d=>d.mean_mm).filter(finite);if(vals.length<5)continue;const mean=vals.reduce((s,v)=>s+v,0);
+    rows.push({label:`Semana ${Number(w)+1}`,period:`${days[0].date.slice(8,10)}/${days[0].date.slice(5,7)}–${days.at(-1).date.slice(8,10)}/${days.at(-1).date.slice(5,7)}`,rain:`≈ ${fmt(mean)} mm`,range:`soma das médias diárias do GEFS (${vals.length} dias com valor; ${gefs.member_count} membros de um só modelo)`,source:'NOAA GEFS estendido',confidence:'tendência',kind:'gefs'});}
   }
   const ext=state?.complementary?.ecmwf_extended;
   if(ext?.state==='ok'&&Array.isArray(ext.weeks)){
@@ -99,7 +103,7 @@
   }
   if(weeks){
    const rows=buildWeeks(state,now);
-   weeks.innerHTML=`<div class="board-scroll"><table class="board weeks"><thead><tr><th>Período</th><th>Chuva esperada</th><th>Leitura</th><th>Fonte</th><th>Confiança</th></tr></thead><tbody>${rows.map(r=>`<tr class="week-${esc(r.kind)}"><td><strong>${esc(r.label)}</strong><small>${esc(r.period)}</small></td><td><strong class="rain-big">${esc(r.rain)}</strong></td><td>${esc(r.range)}</td><td>${esc(r.source)}</td><td><span class="agree ${r.confidence.startsWith('média')?'ok':r.confidence==='baixa'?'bad':'warn'}">${esc(r.confidence)}</span></td></tr>`).join('')}</tbody></table></div><p class="caption">Além de 7 dias a previsão diária perde qualidade; semanas 3 em diante são tendências de um modelo (GEFS) ou médias semanais (ECMWF), nunca chuva em dias específicos.</p>`;
+   weeks.innerHTML=`<div class="board-scroll"><table class="board weeks"><thead><tr><th>Período</th><th>Chuva esperada</th><th>Leitura</th><th>Fonte</th><th>Concordância</th></tr></thead><tbody>${rows.map(r=>`<tr class="week-${esc(r.kind)}"><td><strong>${esc(r.label)}</strong><small>${esc(r.period)}</small></td><td><strong class="rain-big">${esc(r.rain)}</strong></td><td>${esc(r.range)}</td><td>${esc(r.source)}</td><td><span class="agree ${r.confidence==='alta'?'ok':r.confidence==='média'?'warn':r.confidence==='baixa'?'bad':''}">${esc(r.confidence)}</span></td></tr>`).join('')}</tbody></table></div><p class="caption">Além de 7 dias a previsão diária perde qualidade; semanas 3 em diante são tendências de um modelo (GEFS) ou médias semanais (ECMWF), nunca chuva em dias específicos.</p>`;
   }
  }
  function bind(){root.addEventListener?.('campo:forecast-rendered',()=>{try{render(typeof state!=='undefined'?state:null);}catch(e){console.error('weekly board render',e);}});}

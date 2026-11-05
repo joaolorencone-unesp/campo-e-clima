@@ -25,6 +25,7 @@ import datetime as dt
 import json
 import math
 import os
+import re
 from pathlib import Path
 import numpy as np
 from .common import digest, haversine, now, packed, write_json
@@ -489,6 +490,8 @@ def run(*, fetch=False, fixture=None, output_dir='site/data/stations', runtime='
     fixture_data = json.loads(Path(fixture).read_text(encoding='utf-8')) if fixture else None
     reports = []
     for entry in registry(Path(root) / 'data/stations/stations.json'):
+        if not re.fullmatch(r'[a-z0-9_-]+', str(entry.get('slug', ''))):
+            raise ValueError(f'slug inválido em stations.json: {entry.get("slug")!r} (use a-z, 0-9, _ e -)')
         if stations and entry['id'] not in stations and entry['slug'] not in stations:
             continue
         data = load_station(entry, root, asof=asof)
@@ -513,7 +516,9 @@ def run(*, fetch=False, fixture=None, output_dir='site/data/stations', runtime='
             try:
                 forecasts = fetch_station_forecasts(client, entry, data['period'][0], data['period'][1], models=models)
             finally:
-                cap.finish()
+                # A capture without any valid response is 'unavailable' (not archived as an import).
+                ok = any(r.get('http_status') == 200 and r.get('raw_sha256') for r in cap.manifest['requests'])
+                cap.finish('complete' if ok else 'unavailable')
         forecasts = add_multimodel_mean(forecasts)
         reports.append(station_report(data, forecasts))
     return write_reports(reports, output_dir), reports
