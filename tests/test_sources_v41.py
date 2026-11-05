@@ -16,6 +16,9 @@ def test_cemaden_catalog_and_rain_parsers_are_tolerant():
     rows = [{'codestacao': '500570701A', 'datahora': '2026-11-04T13:00:00', 'sensor': 'chuva', 'valor': 3}]
     assert cemaden.parse_rain(rows, codes={'500570701A'}, since_utc=since)['500570701A']['rain_24h_mm'] == 3
     assert cemaden.collect_cemaden(-23.065, -54.19, enabled=False)['state'] == 'disabled'
+    import os
+    os.environ.pop('CEMADEN_TOKEN', None)
+    assert cemaden.collect_cemaden(-23.065, -54.19, enabled=True)['state'] == 'requires_registration', 'no request without a token'
 
 
 def test_inmet_rss_fallback_filters_the_municipality():

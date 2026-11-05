@@ -114,7 +114,8 @@ jobs:
           ECMWF_EXTENDED_ENABLE: '1' # Consultar UMA vez por semana via cache separado.
           GEFS_EXTENDED_ENABLE: '1' # Uma vez por dia: GEFS 15–35 dias, um único ensemble.
           CLIMATE_ERA5_ENABLE: '0' # Pausada até validar a completude dos 30 anos em grade.
-          CEMADEN_ENABLE: '1' # Pluviômetros públicos do CEMADEN até 80 km; falhas viram estado 'unavailable'.
+          CEMADEN_ENABLE: '1' # Pluviômetros do CEMADEN até 80 km; sem o segredo CEMADEN_TOKEN o estado é 'requires_registration'.
+          CEMADEN_TOKEN: ${{ secrets.CEMADEN_TOKEN }} # Opcional, gratuito, solicitado ao CEMADEN; nunca gravado no arquivo ou no site.
           # Optional NEW secret, used exclusively by free /data/2.5/forecast API.
           OPENWEATHER_FREE_API_KEY: ${{ secrets.OPENWEATHER_FREE_API_KEY }}
           # Optional free INMET token (requested from INMET); never written to the archive or the site.

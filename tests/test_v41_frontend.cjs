@@ -16,6 +16,6 @@ assert.equal(g.n,7);assert.equal(Math.round(g.total*10)/10,Math.round(((15-10)+(
 assert.equal(idx.chillHours(state,now).hours,24,'8 cold hours per day over the three forecast days');
 const page=fs.readFileSync('site/index.html','utf8');
 for(const id of ['agro-indices-card','gdd-base','merge-panel','merge-image'])assert.ok(page.includes(`id="${id}"`),'missing '+id);
-assert.ok(page.includes('GOES-East_GLM_Flash_Extent_Density')&&page.includes('agro_indices_v40.js'));
+assert.ok(page.includes('GOES-East_ABI_FireTemp')&&page.includes('GOES-East_ABI_Band2_Red_Visible_1km')&&!page.includes('GLM')&&page.includes('agro_indices_v40.js'));
 const ci=fs.readFileSync('.github/workflows/pages.yml','utf8');assert.ok(/repository_dispatch:\s*\n\s*types: \[collect\]/.test(ci),'external trigger');
 console.log('PASS v4.1: frost/degree-days/chill indices, markup, external trigger');
