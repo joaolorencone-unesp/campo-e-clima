@@ -1,5 +1,9 @@
 # Changelog
 
+## 4.0.1 — arquivo científico: manifestos com objeto repetido e contêiner gzip legado, 05/11/2026
+
+- `scripts/science/archive.py`: quando um objeto já existe no arquivo em um contêiner gzip diferente (mesmo RAW), todos os registros do manifesto que apontam para ele passam a receber o hash do contêiner mantido, e a verificação de manifestos aceita essa diferença de contêiner (o SHA-256 do RAW e o tamanho continuam estritos); objeto gzip ilegível vira `ValueError` explícito. Corrige a falha do job de arquivo após a integração da v4 (duas respostas INMET idênticas no mesmo manifesto) e destrava a reconstrução dos relatórios. Teste de regressão em `tests/test_science_v22.py`.
+
 ## 4.0.0 — identidade oficial, estações físicas e satélite, 05/11/2026
 
 - Estações físicas: `scripts/science/station_files.py` lê os arquivos INMET (portal, horário UTC) e Embrapa Guia Clima (diário), aplica QC conservador (faltante ≠ zero) e agrega por dia local; `scripts/science/station_calibration.py` e `scripts/station_calibration.py` pareiam as medições com o Previous Runs API nas coordenadas da estação (D1, D2, D3, D7, sete modelos + média multimodelo), avaliam correções (viés, viés por hora, linear, fator, mapeamento de quantis) por origem móvel mensal com bootstrap por blocos e só recomendam o que vence fora da amostra. Arquivos recebidos em `data/stations/` (INMET S735 Naviraí, INMET A949 Diamantino, Embrapa Naviraí/IFMS) com registro em `stations.json`.
