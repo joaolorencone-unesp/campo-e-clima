@@ -19,3 +19,5 @@ site/data/locations/
 site/data/*cache*
 site/data/inmet_stations.json
 site/data/history_navirai.json
+site/data/stations/
+site/data/bulletin_*.json

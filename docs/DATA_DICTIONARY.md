@@ -38,3 +38,56 @@ O primeiro acumulado de chuva não tem início comprovado na própria série e �
 | `previous_run_comparison` | Diferença por dia frente à publicação anterior e modelos com aquisição nova/reutilizada |
 | `freshness` | Idades de aquisição, rodada e publicação por produto; `models_with_newer_run_pending` |
 | `site.utc_offset_seconds` | Offset do fuso configurado no instante da coleta |
+
+## Campos públicos acrescentados na versão 4
+
+### `deterministic_models` (em `latest.json`)
+
+| Campo | Significado |
+|---|---|
+| `state` | `ok` quando ao menos um modelo respondeu; `unavailable` com `error` caso contrário |
+| `requested` | Identificadores Open-Meteo pedidos (padrão `DETERMINISTIC_MODELS` do coletor ou variável de ambiente) |
+| `models.<id>.state`, `label`, `error` | `ok` ou `unavailable` por modelo; o motivo (por exemplo `HTTP 400`) fica em `error` |
+| `models.<id>.daily` | `time`, `temperature_2m_max`, `temperature_2m_min`, `precipitation_sum`, `wind_gusts_10m_max`, `weather_code` (7 dias) |
+| `models.<id>.hourly` | `time`, `precipitation`, `temperature_2m` limitados às primeiras 72 h |
+| `spread_daily[]` | Por dia: `models`, `rain_min_mm`, `rain_median_mm`, `rain_max_mm`, `models_wet_1mm`, `models_wet_10mm`, `tmax_min`, `tmax_max`, `tmin_min`, `tmin_max` — dispersão entre modelos, não probabilidade calibrada |
+| `models_ok`, `fallback`, `collected_at_utc` | Modelos válidos; aviso quando o pedido combinado foi rejeitado e os modelos foram consultados um a um; hora da coleta |
+
+### `site/data/bulletin_<localidade>.json`
+
+| Campo | Significado |
+|---|---|
+| `generated_utc`, `location_id`, `issued_at_utc` | Geração do boletim, localidade e emissão da previsão usada |
+| `prompt_version`, `facts[]`, `facts_sha256` | Versão da ficha de fatos, frases factuais derivadas do JSON publicado e seu hash |
+| `rule_based_text`, `text` | Texto por regras (sempre presente) e texto publicado (igual ao de regras quando não há IA válida) |
+| `status` | `rules` (sem IA), `llm` (reescrita aceita) ou `rules_fallback` (IA indisponível ou rejeitada) |
+| `provider`, `model`, `validation`, `error`, `usage` | Provedor e modelo usados, resultado da validação numérica, motivo da rejeição, uso de tokens quando informado |
+| `disclaimer` | Aviso de que o texto é automático e os números devem ser conferidos no painel |
+
+### `site/data/stations/index.json`
+
+| Campo | Significado |
+|---|---|
+| `generated_at_utc`, `archive_commit` | Geração dos relatórios e commit da branch de arquivo de onde foram copiados |
+| `stations[].id`, `slug`, `name`, `location_id`, `file` | Identidade da estação e nome do relatório individual |
+| `stations[].period`, `daily_rows`, `models`, `forecast_point`, `state` | Período observado, dias agregados, estado por modelo, ponto consultado (`station_coordinates` ou `municipal_reference_point`), `ok` ou `observations_only` |
+| `stations[].headline` | Por `t_max`, `t_min`, `rain_mm`: melhor modelo em D1 (`model`, `mae_raw`, `bias_raw`, `n`, `recommended`) |
+| `stations[].recommendations`, `groups_evaluated` | Número de correções validadas e de grupos avaliados |
+| `stations[].recent[]` | Últimos 7 dias com `date`, `t_max`, `t_min`, `rain_mm` (chuva `null` em dia incompleto) |
+| `stations[].yesterday_check` | Último dia com observação e previsão D1 do modelo de referência: `date`, `model`, `obs_rain_mm`, `fc_rain_mm`, `obs_t_max`, `fc_t_max` |
+
+### `site/data/stations/<slug>.json`
+
+| Campo | Significado |
+|---|---|
+| `schema_version` (1), `generated_at_utc`, `dataset_sha256` | Versão do esquema, geração e hash do conjunto avaliado |
+| `station` | Registro de `data/stations/stations.json` sem a lista de arquivos (`id`, `name`, `institution`, coordenadas, `timezone`, `utc_offset_hours`, `identity_status`, `coordinates_source`, `evidence_url`) |
+| `forecast_point` | `latitude`, `longitude`, `source` (`station_coordinates` ou `municipal_reference_point`); `station_to_forecast_point_km` quando as duas coordenadas existem |
+| `leads_days` | Antecedências nominais avaliadas (1, 2, 3, 7) |
+| `observations` | `period`, `hourly_rows`, `daily_rows`, `qc` (contagens por variável e marca), `sources` (arquivo, formato, SHA-256 do original), `daily[]` (`date`, `t_max`, `t_min`, `t_mean`, `rain_mm`, `rh_min`, `rh_max`, `gust_max_kmh`, `wind_mean_kmh`, `radiation_mj`, `et0_mm`) |
+| `models.<id>` | `state` (`ok`, `partial`, `unavailable`), `blocks`, `errors[]`, `variables`, `grid` (coordenadas/elevação devolvidas), `members` (só na média multimodelo) |
+| `verification[]` | Por `model`, `lead_days`, `variable`, `kind` (`hourly`/`daily`): `status` (`evaluated`, `insufficient_pairs`, `insufficient_test_sample`), `n_pairs`, `n_test`, `raw_all_pairs` e `raw_test` (`n`, `mae`, `rmse`, `bias`), `folds[]` (mês testado, tamanhos, data de corte), `methods[]` (`name`, `n`, `mae`, `rmse`, `bias`, `skill_mae`, `delta_mae_ci95`, `significant_improvement`, `contingency` para chuva), `recommended` (`method`, `parameters`, `fitted_on`, `evidence`, `status`) ou `null` com `reason`, `raw_contingency` (chuva, limiares 1 e 10 mm), `diagnostics` (`bias_by_local_hour`, `bias_by_month`, só em D1 horário) |
+| `series.<model>` | `lead_days` (1), `dates`, `obs_t_max`, `fc_t_max`, `obs_t_min`, `fc_t_min`, `obs_rain_mm`, `fc_rain_mm` |
+| `headline`, `recommendations`, `groups_evaluated`, `limitations[]` | Resumo por variável, contagens e limitações textuais publicadas com o relatório |
+
+Viés é sempre modelo − estação. Parâmetros de correção: `bias`; `ratio`; `slope`/`intercept`; `global_bias` + `by_hour` (0–23); `threshold`, `qx`, `qy` (mapeamento de quantis, com `fallback_ratio` quando a amostra úmida é pequena). Nenhum campo substitui a previsão principal.

@@ -106,7 +106,7 @@ def ingest_manifest(db, root, manifest):
             register_raw(con,event)
             # Extended daily members stay in immutable RAW + the public summary.
             # They are not hourly forecasts or observation/forecast verification pairs.
-            if event.get('http_status')!=200 or not event.get('payload_valid',True) or event.get('product') in ('official_response','extended_ensemble','model_meta'):
+            if event.get('http_status')!=200 or not event.get('payload_valid',True) or event.get('product') in ('official_response','extended_ensemble','model_meta','station_previous_runs'):
                 continue
             try:
                 payload=json.loads(body)

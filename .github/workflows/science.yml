@@ -13,7 +13,7 @@ jobs:
   science:
     if: github.repository == 'joaolorencone-unesp/campo-e-clima' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-26.04
-    timeout-minutes: 25
+    timeout-minutes: 40 # daily history + station verification (~150 cached Previous Runs requests) + archive
     permissions:
       contents: write
     steps:
@@ -28,6 +28,21 @@ jobs:
         env:
           INMET_API_TOKEN: ${{ secrets.INMET_API_TOKEN }}
         run: python -m scripts.science_daily
+      - name: Restore station forecast cache (Previous Runs, 30-day TTL)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: runtime/http_cache
+          key: station-previous-runs-v40-${{ hashFiles('data/stations/stations.json') }}-${{ github.run_id }}
+          restore-keys: |
+            station-previous-runs-v40-${{ hashFiles('data/stations/stations.json') }}-
+            station-previous-runs-v40-
+      # Physical stations: observations supplied in data/stations, forecasts fetched at the station
+      # coordinates, corrections validated out of sample. Failures never block the archive.
+      - name: Station verification and bias correction (free Previous Runs API)
+        continue-on-error: true
+        env:
+          STATION_MODELS: ${{ vars.STATION_MODELS }}
+        run: python -m scripts.station_calibration --fetch --output-dir runtime/stations_public
       - name: Preserve recovery transport before attempting Git publication
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -46,7 +61,7 @@ jobs:
         run: |
           EXTRA=""
           if [ "$(date -u +%u)" = "1" ]; then EXTRA="--train"; fi
-          python -m scripts.archive_git --captures runtime/imports --push $EXTRA
+          STATION_REPORTS_DIR=runtime/stations_public python -m scripts.archive_git --captures runtime/imports --push $EXTRA
       - name: Diagnostic log (temporary transport, not permanent archive)
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

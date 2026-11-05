@@ -1,5 +1,16 @@
 # Changelog
 
+## 4.0.0 — identidade oficial, estações físicas e satélite, 05/11/2026
+
+- Estações físicas: `scripts/science/station_files.py` lê os arquivos INMET (portal, horário UTC) e Embrapa Guia Clima (diário), aplica QC conservador (faltante ≠ zero) e agrega por dia local; `scripts/science/station_calibration.py` e `scripts/station_calibration.py` pareiam as medições com o Previous Runs API nas coordenadas da estação (D1, D2, D3, D7, sete modelos + média multimodelo), avaliam correções (viés, viés por hora, linear, fator, mapeamento de quantis) por origem móvel mensal com bootstrap por blocos e só recomendam o que vence fora da amostra. Arquivos recebidos em `data/stations/` (INMET S735 Naviraí, INMET A949 Diamantino, Embrapa Naviraí/IFMS) com registro em `stations.json`.
+- Boletim: `scripts/ai_bulletin.py` gera texto por regras a partir de uma ficha de fatos e, opcionalmente, pede a um provedor gratuito (GitHub Models, Groq, Gemini, OpenRouter, Cloudflare Workers AI, Ollama) uma reescrita validada número a número; publica `site/data/bulletin_<localidade>.json` com a origem.
+- Coletor: `forecast_models()` em `scripts/collect.py` consulta modelos determinísticos lado a lado (`models=`) com isolamento de identificadores inválidos (HTTP 400) e publica `deterministic_models` com a faixa diária entre modelos.
+- Interface: identidade visual com o logo oficial (paleta navy/verde/azul-céu, vermelho só em alertas, favicons, manifesto); `site/static/weekly_board_v40.js` (quadro semanal estilo jornal e próximas semanas), `bulletin_v40.js`, `stations_v40.js` (observações, matriz de erro, previsão corrigida no navegador), `models_compare_v40.js`; camadas GOES-East GeoColor/IR/massas de ar e IMERG com controle de tempo em `maps_v14.js` (v=21); `nav_v30.js` retira o mapa de amostras em grade do modo simples.
+- Workflows: `pages.yml` ganha a etapa do boletim e a permissão `models: read` (usada apenas com `AI_BULLETIN_PROVIDER=github`); `science.yml` executa a verificação das estações e publica `public/stations/` na branch de arquivo; `station-calibration.yml` permite prévia manual em qualquer branch sem publicar.
+- Publicação: `scripts/export_science_public.py` copia `public/stations/*.json` para o site; `scripts/archive_git.py` publica os relatórios; `scripts/science/ingest.py` ignora o produto `station_previous_runs` no banco das sedes.
+- Testes novos: `tests/test_station_calibration_v40.py`, `tests/test_models_compare_v40.py`, `tests/test_ai_bulletin_v40.py`, `tests/test_v40_frontend.cjs`; pinos de versão de ativos atualizados.
+- Documentos: [Design v4](DESIGN_V4.md), [Estações e calibração](ESTACOES_E_CALIBRACAO_V4.md), [Fontes v4](FONTES_V4.md). Os números reais de verificação aparecem após a primeira execução dos workflows com rede.
+
 ## 3.0.0 — plataforma agrometeorológica, 05/11/2026
 
 - Coletor: offset de fuso derivado da configuração; metadados de rodada por modelo (`static/meta.json`, best effort) e cache sensível à rodada; pedido de 8 dias para sete dias locais completos; variáveis complementares do determinístico em requisição isolada.

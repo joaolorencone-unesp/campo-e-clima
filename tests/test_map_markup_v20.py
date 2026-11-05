@@ -8,12 +8,12 @@ JS = (ROOT / 'site/static/maps_v14.js').read_text(encoding='utf-8')
 
 def test_radar_controls_and_sources_in_markup():
     doc = BeautifulSoup(HTML, 'html.parser')
-    assert doc.select_one('script[src*="maps_v14.js?v=20"]')
+    assert doc.select_one('script[src*="maps_v14.js?v=21"]')
     for id_ in ('radar-mode', 'radar-prev', 'radar-next', 'radar-speed', 'radar-frame',
                 'radar-frame-time', 'radar-loading', 'radar-play', 'map-product-legend',
                 'map-product-source', 'map-variable', 'map-hour'):
         assert doc.find(id=id_), id_
-    assert doc.select_one('link[href*="styles.css?v=30"]')
+    assert doc.select_one('link[href*="styles.css?v=40"]')
 
 
 def test_future_map_layers_and_scientific_disclaimers():
