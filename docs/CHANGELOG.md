@@ -1,5 +1,14 @@
 # Changelog
 
+## 4.1.0 — gatilho externo, CEMADEN, RSS de avisos, relâmpagos GLM, MERGE e índices de geada, 05/11/2026
+
+- Coleta: evento `repository_dispatch` (`collect`) em `pages.yml` para um agendador externo gratuito compensar o cron do GitHub ([docs/OPERACAO_GATILHO_EXTERNO.md](OPERACAO_GATILHO_EXTERNO.md)).
+- Observações: pluviômetros automáticos do CEMADEN até 80 km (`scripts/sources/cemaden.py`, chuva das últimas 24 h, ligado por `CEMADEN_ENABLE`); avisos do INMET com caminho redundante por RSS quando a API JSON falha (`parse_alerts_rss`).
+- Mapa: camada GOES GLM (densidade de relâmpagos, NASA GIBS, experimental até confirmação do identificador) e figura diária de chuva observada MERGE do CPTEC/INPE.
+- Modo simples: cartão de geada (frações de membros ≤ 5/3/1 °C nas madrugadas e mínima determinística), graus-dia da semana com base selecionável e horas de frio < 7,2 °C (`site/static/agro_indices_v40.js`); limiares `p_le_3` e `p_le_1` nos agro-ensembles.
+- CI: job não bloqueante `sources-probe` (`scripts/probe_sources.py`) imprime o que cada fonte externa responde (CEMADEN, INMET JSON/RSS/WIS 2.0, GIBS, MERGE) antes de o site depender dela.
+- Testes: `tests/test_sources_v41.py`, `tests/test_v41_frontend.cjs`.
+
 ## 4.0.2 — coordenadas da estação Embrapa e cache de ensembles limitado a 4 h, 05/11/2026
 
 - `data/stations/stations.json`: coordenadas da estação Embrapa/IFMS Naviraí (−23,025843 / −54,189553) informadas pelo responsável; a verificação passa a consultar o ponto exato.

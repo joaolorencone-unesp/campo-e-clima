@@ -268,3 +268,5 @@ table.board .agree.ok{background:#e4f5ea;color:#1f5a3c;border-color:#bfe1cb}tabl
 /* v4 — grid children may shrink below their content; inner .scroll/.board-scroll containers take the overflow */
 .grid2>*,.subpanel,.plot,.station-mini{min-width:0}
 @media(max-width:760px){.brand-text .eyebrow{font-size:9px;letter-spacing:.08em}.brand-text p{font-size:13px}}
+#agro-indices-card .panel-head label select{font:inherit;border:1px solid #cbd8d0;border-radius:8px;padding:4px 6px;margin-left:6px}
+#agro-indices .farm-card strong.bad{color:var(--bred)}#agro-indices .farm-card strong.warn{color:#9a6b1d}#agro-indices .farm-card strong.ok{color:var(--bg1-dark)}

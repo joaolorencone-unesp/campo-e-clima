@@ -43,3 +43,15 @@ Em todos os casos o texto do modelo é validado número a número contra a ficha
 ## 3. Lacunas apontadas pelo crítico (próximas pesquisas)
 
 Radar meteorológico brasileiro (DECEA/REDEMET com chave gratuita, SIMEPAR, CEMADEN, radar INMET) e a cobertura real sobre Naviraí e Diamantino; pluviômetros automáticos do CEMADEN e telemetria da ANA (Hidro-WebService); relâmpagos (GOES-19 GLM via GIBS, Blitzortung, ELAT/INPE); alertas oficiais em CAP (INMET alertas2/alerts.json, Defesa Civil); ZARC (dados abertos do MAPA) e Agritempo; queimadas (INPE Programa Queimadas, NASA FIRMS); umidade do solo e NDVI (SMAP, Sentinel-2/HLS, Planetary Computer); previsão sazonal (C3S, prognósticos INMET/CPTEC, ENSO); nowcasting de 1–3 h (RainViewer já traz 30 min; pySTEPS seria pesado no Actions); normais climatológicas 1991–2020 do INMET. Nenhum desses itens foi verificado nesta versão.
+
+
+## Adendo 4.1 (05/11/2026)
+
+| Fonte | Uso | Licença/limites | Estado |
+|---|---|---|---|
+| CEMADEN — pluviômetros automáticos (`sws.cemaden.gov.br/PED/rest`) | chuva observada 24 h até 80 km | dados públicos federais; formato não documentado formalmente | integrado com parsers tolerantes; formato confirmado pelo job `sources-probe` |
+| INMET avisos RSS (`apiprevmet3.inmet.gov.br/avisos/rss`) | redundância dos avisos oficiais | público | integrado como caminho secundário |
+| INMET WIS 2.0 (`wis2bra.inmet.gov.br/oapi`) | observações SYNOP padronizadas (candidato a substituir o token do apitempo) | OGC API pública | sondado pelo `sources-probe`; integração depende da cobertura de S735/A949 |
+| NASA GIBS `GOES-East_GLM_Flash_Extent_Density` | relâmpagos observados | NASA, agradecimento obrigatório | experimental: identificador a confirmar no GetCapabilities |
+| CPTEC/INPE MERGE (`data.inpe.br/bdc/data/prec_merge_daily/FIG/DAILY`) | figura diária de chuva observada | não comercial, citar CPTEC/INPE | padrão de URL inferido; validado pelo `sources-probe` |
+| radarmeteorologico.com.br | — | site de terceiros sem termos claros | não adotado |
