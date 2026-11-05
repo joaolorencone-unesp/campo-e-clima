@@ -90,3 +90,20 @@ jobs:
           name: station-verification-preview-${{ github.run_id }}
           path: runtime/stations_public
           retention-days: 14
+  # Live probe of the free external sources added in v4.1 (CEMADEN, INMET RSS/WIS 2.0, GIBS GLM,
+  # CPTEC MERGE). Non-blocking: it only prints what each endpoint answers so reviewers can see the
+  # real formats before trusting them. Nothing is published.
+  sources-probe:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - run: python -m scripts.probe_sources

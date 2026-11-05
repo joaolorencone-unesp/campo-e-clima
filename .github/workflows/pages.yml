@@ -1,6 +1,10 @@
 name: Collect and deploy Campo e Clima
 on:
   workflow_dispatch:
+  # External free scheduler (e.g. cron-job.org) can POST a repository_dispatch to compensate
+  # the GitHub cron, which executes only a fraction of the half-hourly slots. See docs/OPERACAO_GATILHO_EXTERNO.md.
+  repository_dispatch:
+    types: [collect]
   schedule:
     # GitHub cron works in UTC. Run every half-hour; scheduling may be delayed.
     - cron: '7,37 * * * *'
@@ -110,6 +114,7 @@ jobs:
           ECMWF_EXTENDED_ENABLE: '1' # Consultar UMA vez por semana via cache separado.
           GEFS_EXTENDED_ENABLE: '1' # Uma vez por dia: GEFS 15–35 dias, um único ensemble.
           CLIMATE_ERA5_ENABLE: '0' # Pausada até validar a completude dos 30 anos em grade.
+          CEMADEN_ENABLE: '1' # Pluviômetros públicos do CEMADEN até 80 km; falhas viram estado 'unavailable'.
           # Optional NEW secret, used exclusively by free /data/2.5/forecast API.
           OPENWEATHER_FREE_API_KEY: ${{ secrets.OPENWEATHER_FREE_API_KEY }}
           # Optional free INMET token (requested from INMET); never written to the archive or the site.

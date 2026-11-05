@@ -13,6 +13,7 @@ import requests
 NAVIRAI_IBGE = '5005707'
 LAT, LON = -23.065, -54.190
 ALERTS_URL = 'https://apiprevmet3.inmet.gov.br/avisos/ativos'
+ALERTS_RSS_URL = 'https://apiprevmet3.inmet.gov.br/avisos/rss'
 STATIONS_URL = 'https://apitempo.inmet.gov.br/estacoes/T'
 
 
@@ -139,6 +140,41 @@ def parse_stations(payload: Any, n: int = 16) -> dict:
             'note':'Distâncias em linha reta até a sede de Naviraí; estação mais próxima pode não representar o talhão.'}
 
 
+def _plain(text: str) -> str:
+    import unicodedata
+    return ''.join(c for c in unicodedata.normalize('NFD', str(text or '').upper()) if unicodedata.category(c) != 'Mn')
+
+
+def parse_alerts_rss(xml_text: str, *, municipality: str = 'Naviraí', ibge: str = NAVIRAI_IBGE) -> dict:
+    """Redundant path for the official alerts: RSS items that name the municipality.
+
+    Dates come from the item text as published (no timezone conversion); severity from the title.
+    """
+    import re
+    import xml.etree.ElementTree as ET
+    root = ET.fromstring(xml_text)
+    items = root.findall('.//item')
+    alerts = []
+    for seq, item in enumerate(items):
+        title = (item.findtext('title') or '').strip()
+        description = re.sub(r'<[^>]+>', ' ', item.findtext('description') or '')
+        text = _plain(title + ' ' + description)
+        if _plain(municipality) not in text:
+            continue
+        severity = next((label for label in ('Grande Perigo', 'Perigo Potencial', 'Perigo') if _plain(label) in _plain(title)), 'Não informada')
+        start = re.search(r'In[ií]cio:?\s*([0-9]{4}-[0-9]{2}-[0-9]{2}|[0-9]{2}/[0-9]{2}/[0-9]{4})\s*([0-9]{2}:[0-9]{2})?', description)
+        end = re.search(r'Fim:?\s*([0-9]{4}-[0-9]{2}-[0-9]{2}|[0-9]{2}/[0-9]{2}/[0-9]{4})\s*([0-9]{2}:[0-9]{2})?', description)
+        alerts.append({'id': (item.findtext('guid') or item.findtext('link') or f'rss-{seq}').strip(), 'type': title or 'Aviso meteorológico', 'severity': severity,
+                       'color': '', 'start_date_source': start.group(1) if start else '', 'start_hour_source': (start.group(2) or '') if start else '',
+                       'end_date_source': end.group(1) if end else '', 'end_hour_source': (end.group(2) or '') if end else '', 'timezone_confirmed': False,
+                       'municipality_name': f'{municipality} — MS' if ibge == NAVIRAI_IBGE else municipality, 'ibge': ibge, 'municipal_coverage_confirmed': False,
+                       'terminated': False, 'risks': [], 'instructions': [], 'source_url': item.findtext('link') or ALERTS_RSS_URL,
+                       'published': (item.findtext('pubDate') or '').strip()})
+    return {'state': 'ok', 'source': 'INMET (RSS, caminho redundante)', 'source_url': ALERTS_RSS_URL, 'queried_at_utc': now_utc(), 'records_received': len(items),
+            'municipal_alerts': alerts, 'coverage_note': f'Itens do RSS que citam {municipality}; cobertura municipal confirmada pelo texto, não por geocódigo.',
+            'warnings': ['Caminho redundante usado porque a API JSON de avisos falhou.'] + (['Consulta retornou zero avisos: não equivale a ausência de risco meteorológico.'] if not alerts else [])}
+
+
 def collect_official() -> dict:
     out={}
     for key,url,parser in [('inmet_alerts',ALERTS_URL,parse_alerts),
@@ -148,6 +184,15 @@ def collect_official() -> dict:
         except (requests.RequestException, ValueError, TypeError) as ex:
             out[key]={'state':'unavailable','source_url':url,'queried_at_utc':now_utc(),
                       'error':str(ex)[:210], 'note':'Falha de coleta não significa ausência de risco.'}
+    if out['inmet_alerts'].get('state')!='ok':
+        try:
+            response=requests.get(ALERTS_RSS_URL,timeout=18,headers={'User-Agent':'Campo-e-Clima/4.1 (pesquisa não comercial)'})
+            response.raise_for_status()
+            rss=parse_alerts_rss(response.text)
+            rss['json_error']=out['inmet_alerts'].get('error')
+            out['inmet_alerts']=rss
+        except Exception as ex:  # noqa: BLE001 - the primary error stays recorded
+            out['inmet_alerts']['rss_error']=f'{type(ex).__name__}: {str(ex)[:120]}'
     out['inmet_hourly_nearby']=collect_nearby_station_hourly(out.get('inmet_stations',{}))
     out['inmet_daily_nearby']=collect_nearby_station_daily(out.get('inmet_stations',{}))
     return out

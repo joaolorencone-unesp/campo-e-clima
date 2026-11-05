@@ -865,7 +865,9 @@ def main(include_local_sources=True):
             climate_cache.write_text(json.dumps({'cache_month':climate_month,'data':climate},ensure_ascii=False),encoding='utf-8')
         result['historical_comparison'] = compare_export_provisional(
             slow_sources.get('previous_runs',{}),result['embrapa_observations'])
+        from scripts.sources.cemaden import collect_cemaden
         result['complementary'] = {
+           'cemaden': collect_cemaden(LAT, LON, location_id='navirai'),
            'cptec': collect_cptec(),
            'openweather': collect_openweather_free(),
            'soil_forecast': collect_soil_forecast(),
@@ -900,7 +902,9 @@ def main(include_local_sources=True):
     else:
         result['official'] = {}
         result['embrapa_observations'] = {'state':'not_applicable','note':'Fonte de Naviraí não extrapolada'}
-        result['complementary'] = {}
+        from scripts.sources.cemaden import collect_cemaden
+        result['complementary'] = {'cemaden': collect_cemaden(LAT, LON, location_id='diamantino')}
+        result['sources']['cemaden'] = {'state': result['complementary']['cemaden'].get('state'), 'source_url': result['complementary']['cemaden'].get('source_url')}
         result['historical_comparison'] = {'state':'not_applicable'}
 
     dest = pathlib.Path(os.environ.get('OUTPUT_JSON', 'site/data/latest.json'))

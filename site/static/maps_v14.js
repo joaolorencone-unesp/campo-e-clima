@@ -12,7 +12,8 @@
  const TIME_LAYERS={'GOES-East_ABI_GeoColor':{step:10,latency:40,matrix:'GoogleMapsCompatible_Level7',maxNative:7,label:'GOES-East GeoColor',ext:'png'},
   'GOES-East_ABI_Band13_Clean_Infrared':{step:10,latency:40,matrix:'GoogleMapsCompatible_Level6',maxNative:6,label:'GOES-East infravermelho (banda 13)',ext:'png'},
   'GOES-East_ABI_Air_Mass':{step:10,latency:40,matrix:'GoogleMapsCompatible_Level6',maxNative:6,label:'GOES-East massas de ar',ext:'png'},
-  'IMERG_Precipitation_Rate_30min':{step:30,latency:240,matrix:'GoogleMapsCompatible_Level6',maxNative:6,label:'IMERG taxa de chuva (30 min)',ext:'png'}};
+  'IMERG_Precipitation_Rate_30min':{step:30,latency:240,matrix:'GoogleMapsCompatible_Level6',maxNative:6,label:'IMERG taxa de chuva (30 min)',ext:'png'},
+  'GOES-East_GLM_Flash_Extent_Density':{step:10,latency:40,matrix:'GoogleMapsCompatible_Level6',maxNative:6,label:'GOES GLM densidade de relâmpagos (experimental)',ext:'png'}};
  const GOES_FRAMES=18;let goesFrames=[],goesIndex=GOES_FRAMES-1,goesTimer=null,goesLayers=new Map(),goesBackoff=0;
  let map=null,selectedMarker=null,weatherLayer=null,imageLayer=null,forecast=null,pointKey=null,lastAt=0;
  let hourIndex=0,requestId=0,playing=null,imageLoaded=0,imageErrors=0;
@@ -312,6 +313,13 @@
   }
   select.onchange=update;update();
  }
+ function mergeImage(){
+  const img=el('merge-image'),status=el('merge-status');if(!img||!status)return;
+  const d=new Date(Date.now()-86400000);const y=d.getUTCFullYear(),m=String(d.getUTCMonth()+1).padStart(2,'0'),day=String(d.getUTCDate()).padStart(2,'0');
+  img.onload=()=>{img.hidden=false;status.textContent=`Chuva acumulada em ${day}/${m}/${y} (dia UTC) pelo MERGE do CPTEC/INPE. Observação estimada, não previsão.`;status.className='notice';};
+  img.onerror=()=>{img.hidden=true;status.textContent='Figura do MERGE para ontem ainda não disponível no INPE (ou endereço bloqueado). Tente mais tarde.';status.className='notice muted';};
+  img.src=`https://data.inpe.br/bdc/data/prec_merge_daily/FIG/DAILY/${y}/${m}/MERGE_DAILY_${y}${m}${day}.png`;
+ }
  function bind(){
   el('map-image-date').value=todayUTC(1);el('map-image-date').max=todayUTC();updateProductLegend();productTitle();
   el('map-to-selected').addEventListener('click',()=>{if(makeMap())reposition()});
@@ -335,7 +343,7 @@
   el('radar-speed').addEventListener('change',()=>{if(radarPlaying)requestRadarFrame(radarIndex);});
   el('radar-refresh').addEventListener('click',()=>void loadRadar(true));
   el('radar-frame').addEventListener('input',()=>{stopRadar();requestRadarFrame(Number(el('radar-frame').value));});
-  el('tabs').addEventListener('click',e=>{const tab=e.target.closest('button[data-tab]')?.dataset.tab;if(tab==='maps')setTimeout(display,90);else{pause();stopRadar();if(tab==='wind')setTimeout(syncWindCompass,110)}});
+  el('tabs').addEventListener('click',e=>{const tab=e.target.closest('button[data-tab]')?.dataset.tab;if(tab==='maps'){setTimeout(display,90);if(el('merge-image')&&!el('merge-image').src)mergeImage();}else{pause();stopRadar();if(tab==='wind')setTimeout(syncWindCompass,110)}});
   window.addEventListener('campo:location-changed',onPointChange);
   window.addEventListener('visibilitychange',()=>{if(document.hidden){pause();stopRadar();if(goesTimer)toggleGoesPlay();}});
   // When new weather data is received, allow a fresh wind compass without reloading.

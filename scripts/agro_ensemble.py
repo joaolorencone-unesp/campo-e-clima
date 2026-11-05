@@ -16,7 +16,7 @@ BOUNDS = {'temperature_2m': (-70, 65), 'relative_humidity_2m': (0, 100),
           'wind_speed_10m': (0, 250), 'wind_gusts_10m': (0, 300), 'vpd_kpa': (0, 15)}
 # Exceedance frequencies published per variable (uncalibrated member frequencies).
 THRESHOLDS = {
-    'temperature_2m': (('p_ge_30', lambda v: v >= 30), ('p_ge_35', lambda v: v >= 35), ('p_le_5', lambda v: v <= 5)),
+    'temperature_2m': (('p_ge_30', lambda v: v >= 30), ('p_ge_35', lambda v: v >= 35), ('p_le_5', lambda v: v <= 5), ('p_le_3', lambda v: v <= 3), ('p_le_1', lambda v: v <= 1)),
     'relative_humidity_2m': (('p_lt_55', lambda v: v < 55), ('p_lt_40', lambda v: v < 40), ('p_ge_90', lambda v: v >= 90)),
     'vpd_kpa': (('p_ge_1_5', lambda v: v >= 1.5), ('p_ge_2_5', lambda v: v >= 2.5), ('p_lt_0_5', lambda v: v < .5)),
     'wind_speed_10m': (('p_gt_10', lambda v: v > 10), ('p_gt_15', lambda v: v > 15), ('p_lt_3', lambda v: v < 3)),
