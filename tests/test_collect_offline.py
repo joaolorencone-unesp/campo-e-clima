@@ -38,6 +38,8 @@ def test_collector_builds_json_from_stubbed_api(tmp_path, monkeypatch):
     monkeypatch.setattr(collector, 'MODELS', {'model_A': 'model_a', 'model_B': 'model_b'})
     monkeypatch.setattr(collector.time, 'sleep', lambda _: None)
     monkeypatch.setattr(collector, 'fetch', lambda url, params: forecast if 'forecast' in url else ensemble)
+    monkeypatch.setattr(collector, 'fetch_meta', lambda url: (_ for _ in ()).throw(RuntimeError('offline test')))
+    monkeypatch.setattr(collector, 'META_FAILURES', {'transport': 0})
     target = tmp_path / 'latest.json'
     monkeypatch.setenv('OUTPUT_JSON', str(target))
     collector.main()
@@ -51,6 +53,19 @@ def test_collector_builds_json_from_stubbed_api(tmp_path, monkeypatch):
     assert obj['complementary']['openweather']['state']=='optional_free_key'
     assert 'previous_runs' in obj['complementary']
     assert 'era5_climatology' in obj['complementary']
+    assert obj['schema_version'] == 5
+    assert obj['ensemble_models']['model_A']['model_run']['state'] in ('unavailable', 'skipped')
+    assert obj['rain_ensemble_accumulated'][0]['span_days'] == 3
+    assert obj['rain_ensemble_accumulated'][0]['mean_mm'] == 18.0  # members 0.5 mm/h x 72 h and 0 mm, equal weights
+    assert obj['rain_ensemble_accumulated'][0]['p90_mm'] == 36.0
+    assert obj['rain_model_agreement_daily'][0]['models'] == 2
+    assert obj['previous_run_comparison']['state'] == 'no_previous_publication'
+    assert obj['deterministic_extended']['state'] == 'ok'
+    # Second run of the same point finds the stored publication and compares day by day.
+    collector.main()
+    again = json.loads(target.read_text())
+    assert again['previous_run_comparison']['state'] == 'ok'
+    assert again['previous_run_comparison']['significant_days'] == 0
 
 
 def test_collector_rejects_mismatched_timezone(monkeypatch):

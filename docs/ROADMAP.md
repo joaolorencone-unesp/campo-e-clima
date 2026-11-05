@@ -48,3 +48,13 @@
 4. **INMET/INPE:** observações e avisos oficiais geolocalizados e datados, radar/raios/GOES apenas com atualização verificada.
 5. **Comparação científica oito vs menos modelos:** ensemble completo, melhor modelo individual, combinação por instituição e blend calibrado com rolling-origin. Novos ensembles só após demonstrar ganho no holdout local.
 6. **Pulverização específica por produto:** não aprovar voo/aplicação com filtros genéricos. DJI T100, formulação, classe de gotas e altura, bula/registro, estabilidade/inversão, zonas sensíveis, polinizadores, chuva residual e observação do talhão.
+
+
+## Após a v3 (05/11/2026)
+- [x] Fase 1 — frescor, passo nativo, metadados de rodada, diagnóstico central, estações INMET corretas
+- [x] Fase 2 (parcial) — agro-ensembles, acumulados, concordância, variáveis complementares
+- [x] Fase 5 (parcial) — modo simples/avançado, cinco áreas, resumo da fazenda
+- [ ] Token INMET e identidade da estação Embrapa (desbloqueiam a Fase 3 e a 6)
+- [ ] Retrocoleta Previous Runs (IFS, ICON, GFS) em blocos de 31 dias
+- [ ] Fase 4 — GOES-East e IMERG via NASA GIBS, legendas e metadados de satélite
+- [ ] Balanço hídrico simplificado com parâmetros informados pelo usuário

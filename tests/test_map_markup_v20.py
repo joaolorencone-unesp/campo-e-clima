@@ -13,7 +13,7 @@ def test_radar_controls_and_sources_in_markup():
                 'radar-frame-time', 'radar-loading', 'radar-play', 'map-product-legend',
                 'map-product-source', 'map-variable', 'map-hour'):
         assert doc.find(id=id_), id_
-    assert doc.select_one('link[href*="styles.css?v=20"]')
+    assert doc.select_one('link[href*="styles.css?v=30"]')
 
 
 def test_future_map_layers_and_scientific_disclaimers():

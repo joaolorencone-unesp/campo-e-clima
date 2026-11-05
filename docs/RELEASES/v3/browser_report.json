@@ -1,0 +1,46 @@
+{
+  "base": "http://127.0.0.1:8777",
+  "checked_at_utc": "2026-11-05T05:20:11.361Z",
+  "cases": [
+    {
+      "mobile": false,
+      "tabs": [
+        "overview",
+        "rain",
+        "extended",
+        "agro",
+        "spray",
+        "wind",
+        "maps",
+        "observations",
+        "precision",
+        "verification",
+        "history-nasa"
+      ],
+      "js_errors": [],
+      "horizontal_overflow": false,
+      "simple_cards": 6,
+      "headline": "Chuva provável nas próximas 24 h."
+    },
+    {
+      "mobile": true,
+      "tabs": [
+        "overview",
+        "rain",
+        "extended",
+        "agro",
+        "spray",
+        "wind",
+        "maps",
+        "observations",
+        "precision",
+        "verification",
+        "history-nasa"
+      ],
+      "js_errors": [],
+      "horizontal_overflow": false,
+      "simple_cards": 6,
+      "headline": "Chuva provável nas próximas 24 h."
+    }
+  ]
+}

@@ -1,26 +1,55 @@
-"""INMET public catalogue and hourly observations, independently for each locality."""
+"""INMET public catalogue and hourly observations, independently for each locality.
+
+Station choice: operating stations within 50 km, preferring those operated by
+INMET itself (entity ``INMET``), because the public ``apitempo`` station route
+has only answered for INMET-operated automatic stations in our captures;
+partner-network stations (e.g. SEMADESC-MS) appear in the catalogue but return
+HTTP 204 on the observation route. Distance is the tie-breaker inside each tier.
+
+Token: INMET grants a free API token on request. When ``INMET_API_TOKEN`` is set
+the token route is used; the token is placed in the URL path by INMET's design,
+so the recorded (archived) URL is always the redacted public route.
+"""
 from __future__ import annotations
 import datetime as dt
 import math
+import os
 from .common import haversine, instant, iso, location, now, packed
 from .ingest import VARIABLES
 
 CATALOG='https://apitempo.inmet.gov.br/estacoes/T'
+MAX_DISTANCE_KM=50
 
-def nearest(payload,loc):
-    candidates=[]
+def candidates(payload,loc,*,max_distance_km=MAX_DISTANCE_KM):
+    """Operating stations within range, ordered by (entity tier, distance)."""
+    out=[]
     for row in payload:
         try:
             if str(row.get('CD_SITUACAO','')).lower()!='operante':continue
-            meta={'id':'INMET:'+str(row['CD_ESTACAO']),'institution':str(row.get('SG_ENTIDADE') or 'INMET catálogo'),
+            entity=str(row.get('SG_ENTIDADE') or 'INMET catálogo')
+            meta={'id':'INMET:'+str(row['CD_ESTACAO']),'institution':entity,
                 'name':row['DC_NOME'],'latitude':float(str(row['VL_LATITUDE']).replace(',','.')),
                 'longitude':float(str(row['VL_LONGITUDE']).replace(',','.')),
                 'altitude_m':float(str(row['VL_ALTITUDE']).replace(',','.')) if row.get('VL_ALTITUDE') else None,
-                'timezone':loc['timezone'],'identity_status':'catalog_verified','evidence_url':CATALOG}
+                'timezone':loc['timezone'],'identity_status':'catalog_verified','evidence_url':CATALOG,
+                'operating_since':row.get('DT_INICIO_OPERACAO')}
             distance=haversine(loc,meta)
-            if distance<=50:candidates.append((distance,meta))
+            if distance<=max_distance_km:out.append((0 if entity.strip().upper()=='INMET' else 1,distance,meta))
         except (KeyError,ValueError,TypeError):continue
-    return min(candidates,key=lambda x:x[0]) if candidates else None
+    out.sort(key=lambda x:(x[0],x[1]))
+    return [(distance,meta) for _,distance,meta in out]
+
+def nearest(payload,loc):
+    options=candidates(payload,loc)
+    return options[0] if options else None
+
+def observation_urls(code,start,end):
+    """(request_url, recorded_url): the recorded one never contains the token."""
+    public=f'https://apitempo.inmet.gov.br/estacao/{start}/{end}/{code}'
+    token=os.environ.get('INMET_API_TOKEN','').strip()
+    if token:
+        return f'https://apitempo.inmet.gov.br/token/estacao/{start}/{end}/{code}/{token}',public
+    return public,public
 
 def normalize_hourly(payload,station):
     code=station['id'].split(':')[-1]
@@ -50,18 +79,27 @@ def normalize_hourly(payload,station):
     return {'station':station,'records':records,'normalizer_version':'inmet-hourly-v22'}
 
 def collect(client,location_id):
+    """Try the preferred stations in order; stop at the first with numeric observations."""
     loc=location(location_id)
     registry=client.get(CATALOG,{},ttl_hours=24,product='official_response')
     if not isinstance(registry,list):raise ValueError('Catálogo INMET inválido')
-    selected=nearest(registry,loc)
-    if selected is None:raise ValueError('Nenhuma estação operante identificada até 50 km')
-    distance,station=selected
+    options=candidates(registry,loc)
+    if not options:raise ValueError('Nenhuma estação operante identificada até 50 km')
     today=dt.datetime.now(dt.timezone.utc).date()
-    url=f'https://apitempo.inmet.gov.br/estacao/{today-dt.timedelta(days=3)}/{today}/{station["id"].split(":")[-1]}'
-    raw=client.get(url,{},ttl_hours=1,product='official_response')
-    if not isinstance(raw,list):raise ValueError('Sem lista de observações horárias válidas')
-    payload=normalize_hourly(raw,station)
-    if not any(r['value'] is not None for r in payload['records']):raise ValueError('Nenhum registro observado numérico disponível')
-    client.capture.record(url,{},content=packed(payload),status=200,product='station_import')
-    client.capture.finish()
-    return {'station':station['id'],'distance_km':distance,'records':len(payload['records'])}
+    problems=[]
+    for distance,station in options[:3]:
+        code=station['id'].split(':')[-1]
+        url,recorded=observation_urls(code,today-dt.timedelta(days=3),today)
+        try:
+            raw=client.get(url,{},ttl_hours=1,product='official_response',record_url=recorded)
+            if not isinstance(raw,list):raise ValueError('Sem lista de observações horárias válidas')
+            payload=normalize_hourly(raw,station)
+            if not any(r['value'] is not None for r in payload['records']):raise ValueError('Nenhum registro observado numérico disponível')
+        except Exception as exc:
+            problems.append(f'{code}: {type(exc).__name__}: {str(exc)[:80]}')
+            continue
+        client.capture.record(recorded,{},content=packed(payload),status=200,product='station_import')
+        client.capture.finish()
+        return {'station':station['id'],'distance_km':distance,'records':len(payload['records']),'entity':station['institution'],
+                'token_used':bool(os.environ.get('INMET_API_TOKEN','').strip()),'skipped':problems}
+    raise ValueError('Nenhuma estação respondeu com observações: '+'; '.join(problems)[:300])
