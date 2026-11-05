@@ -39,7 +39,11 @@ INMET_COLUMNS = (('TEMP. INS.', 'temperature_2m', 1), ('TEMP. MAX.', 'temperatur
                  ('PTO ORVALHO INS.', 'dew_point_2m', 1), ('PRESSAO INS.', 'surface_pressure', 1),
                  ('VEL. VENTO', 'wind_speed_10m', 3.6), ('DIR. VENTO', 'wind_direction_10m', 1), ('RAJ. VENTO', 'wind_gusts_10m', 3.6),
                  ('RADIACAO', 'shortwave_radiation', 1000 / 3600), ('CHUVA', 'precipitation', 1))
-MIN_HOURS_DAILY = 20          # instantaneous means and extremes need 20 of 24 hours
+MIN_HOURS_DAILY = 20          # instantaneous means need 20 of 24 hours
+SOLAR_WINDOW = range(7, 19)   # hour-ending labels 07..18 local must be present for a daily radiation sum
+TMAX_WINDOW = range(11, 19)   # hour-ending labels 11..18 local must be valid to publish the daily maximum
+TMIN_WINDOW = range(2, 9)     # hour-ending labels 02..08 local must be valid to publish the daily minimum
+NIGHT_LABELS = set(range(20, 25)) | set(range(0, 7))  # radiation blanks here are night, not missing data
 FLATLINE_TEMPERATURE = 6      # identical consecutive values (0.1 °C resolution) before flagging a stuck sensor
 FLATLINE_WIND = 12
 STEP_TEMPERATURE = 8.0        # °C between consecutive hours
@@ -115,7 +119,13 @@ def parse_inmet_portal_hourly(text):
     return records
 
 
-def qc_hourly(records):
+def local_hour_ending(iso_utc, offset_hours):
+    """Local clock hour of a hour-ending label (24 for midnight)."""
+    local = dt.datetime.fromisoformat(iso_utc) + dt.timedelta(hours=offset_hours)
+    return 24 if local.hour == 0 else local.hour
+
+
+def qc_hourly(records, offset_hours=-4):
     """Attach ``qc`` (flag per variable) and ``clean`` (value or None) to each record; return a summary."""
     counts = collections.defaultdict(collections.Counter)
     out = []
@@ -125,6 +135,8 @@ def qc_hourly(records):
             value = record.get(field)
             low, high = BOUNDS[field]
             flags[field] = 'missing' if value is None else ('valid' if low <= value <= high else 'out_of_range')
+        if flags['shortwave_radiation'] == 'missing' and local_hour_ending(record['valid_at_utc'], offset_hours) in NIGHT_LABELS:
+            flags['shortwave_radiation'] = 'night'  # the INMET export leaves night-time radiation blank
         t, tmax, tmin = record.get('temperature_2m'), record.get('temperature_hour_max'), record.get('temperature_hour_min')
         if all(flags[k] == 'valid' for k in ('temperature_2m', 'temperature_hour_max', 'temperature_hour_min')):
             if not (tmin - 0.3 <= t <= tmax + 0.3) or tmin > tmax + 0.3:
@@ -146,7 +158,13 @@ def qc_hourly(records):
         if a['qc']['temperature_2m'] == 'valid' and b['qc']['temperature_2m'] == 'valid':
             gap = (dt.datetime.fromisoformat(b['valid_at_utc']) - dt.datetime.fromisoformat(a['valid_at_utc'])).total_seconds()
             if gap == 3600 and abs(b['temperature_2m'] - a['temperature_2m']) > STEP_TEMPERATURE:
-                b['qc']['temperature_2m'] = 'step'
+                # A real change (storm outflow, frontal passage) is confirmed when the hour's own
+                # extremes bracket both readings; only an unconfirmed jump is treated as a fault.
+                hmax, hmin = b.get('temperature_hour_max'), b.get('temperature_hour_min')
+                confirmed = (b['qc'].get('temperature_hour_max') == 'valid' and b['qc'].get('temperature_hour_min') == 'valid'
+                             and hmin - 0.3 <= min(a['temperature_2m'], b['temperature_2m']) and max(a['temperature_2m'], b['temperature_2m']) <= hmax + 0.3)
+                if not confirmed:
+                    b['qc']['temperature_2m'] = 'step'
     for field, limit, nonzero in (('temperature_2m', FLATLINE_TEMPERATURE, False), ('wind_speed_10m', FLATLINE_WIND, True)):
         run_start = 0
         for i in range(1, len(out) + 1):
@@ -159,6 +177,8 @@ def qc_hourly(records):
                 run_start = i
     for record in out:
         record['clean'] = {field: (record[field] if record['qc'][field] == 'valid' else None) for field in HOURLY_FIELDS}
+        if record['qc']['shortwave_radiation'] == 'night':
+            record['clean']['shortwave_radiation'] = 0.0  # no sun: the hour contributes nothing to the daily sum
         for field in HOURLY_FIELDS:
             counts[field][record['qc'][field]] += 1
     summary = {field: dict(counter) for field, counter in counts.items()}
@@ -179,35 +199,56 @@ def _mean(values):
 
 
 def aggregate_local_days(records, offset_hours=-4, *, extremes_from_hourly=False):
-    """Daily values per local day from QC'd hourly records (``clean`` values only)."""
+    """Daily values per local day from QC'd hourly records (``clean`` values only).
+
+    Extremes are published only when the hours in which they normally occur are all valid
+    (TMAX_WINDOW/TMIN_WINDOW); otherwise the partial value is kept under ``*_partial``.
+    Radiation needs every daytime label of SOLAR_WINDOW; rain needs all 24 labels.
+    """
     inst, ending = collections.defaultdict(list), collections.defaultdict(list)
     for r in records:
-        inst[local_day(r['valid_at_utc'], offset_hours)].append(r['clean'])
-        ending[local_day(r['valid_at_utc'], offset_hours, hour_ending=True)].append(r['clean'])
+        local = dt.datetime.fromisoformat(r['valid_at_utc']) + dt.timedelta(hours=offset_hours)
+        inst[local.date().isoformat()].append((local.hour, r['clean']))
+        end_hour = 24 if local.hour == 0 else local.hour
+        ending[(local - dt.timedelta(seconds=1)).date().isoformat()].append((end_hour, r['clean']))
     out = []
     for day in sorted(set(inst) | set(ending)):
         a, b = inst.get(day, []), ending.get(day, [])
-        pick = lambda rows, key: [x[key] for x in rows if x.get(key) is not None]
-        t, tmax, tmin = pick(a, 'temperature_2m'), pick(b, 'temperature_hour_max'), pick(b, 'temperature_hour_min')
+        pick = lambda rows, key: [x[key] for _, x in rows if x.get(key) is not None]
+        hours_valid = lambda rows, key: {h for h, x in rows if x.get(key) is not None}
+        t = pick(a, 'temperature_2m')
         if extremes_from_hourly:
-            tmax, tmin = pick(a, 'temperature_2m'), pick(a, 'temperature_2m')
-        rh, rhmax, rhmin = pick(a, 'relative_humidity_2m'), pick(b, 'rh_hour_max'), pick(b, 'rh_hour_min')
-        if extremes_from_hourly:
-            rhmax, rhmin = pick(a, 'relative_humidity_2m'), pick(a, 'relative_humidity_2m')
-        wind, gust, rain, rad = pick(a, 'wind_speed_10m'), pick(b, 'wind_gusts_10m'), pick(b, 'precipitation'), pick(b, 'shortwave_radiation')
+            # Model values are instantaneous: the label 10 h local covers the same period as the station's hour ending at 11 h.
+            max_rows, min_rows, kmax, kmin = a, a, 'temperature_2m', 'temperature_2m'
+            max_window, min_window = {h - 1 for h in TMAX_WINDOW}, {h - 1 for h in TMIN_WINDOW}
+        else:
+            max_rows, min_rows, kmax, kmin = b, b, 'temperature_hour_max', 'temperature_hour_min'
+            max_window, min_window = set(TMAX_WINDOW), set(TMIN_WINDOW)
+        tmax, tmin = pick(max_rows, kmax), pick(min_rows, kmin)
+        tmax_ok = len(tmax) >= MIN_HOURS_DAILY and max_window <= hours_valid(max_rows, kmax)
+        tmin_ok = len(tmin) >= MIN_HOURS_DAILY and min_window <= hours_valid(min_rows, kmin)
+        rh = pick(a, 'relative_humidity_2m')
+        rhmax, rhmin = (pick(a, 'relative_humidity_2m'), pick(a, 'relative_humidity_2m')) if extremes_from_hourly else (pick(b, 'rh_hour_max'), pick(b, 'rh_hour_min'))
+        wind, gust, rain = pick(a, 'wind_speed_10m'), pick(b, 'wind_gusts_10m'), pick(b, 'precipitation')
+        rad = pick(b, 'shortwave_radiation')
+        rad_ok = set(SOLAR_WINDOW) <= hours_valid(b, 'shortwave_radiation')
         et0 = pick(b, 'et0_fao_evapotranspiration')
         enough = lambda values: len(values) >= MIN_HOURS_DAILY
+        # A mean must not hide a long gap: no two consecutive missing instantaneous hours.
+        present = sorted(h for h, x in a if x.get('temperature_2m') is not None)
+        gap_ok = enough(t) and all(h2 - h1 <= 2 for h1, h2 in zip(present, present[1:]))
         out.append({'date': day, 'hours_in_file': len(a),
-                    'et0_mm': round(sum(et0), 2) if len(et0) == 24 else None,
-                    't_mean': round(_mean(t), 2) if enough(t) else None, 't_hours': len(t),
-                    't_max': round(max(tmax), 1) if enough(tmax) else None, 't_min': round(min(tmin), 1) if enough(tmin) else None,
+                    't_mean': round(_mean(t), 2) if gap_ok else None, 't_hours': len(t),
+                    't_max': round(max(tmax), 1) if tmax_ok else None, 't_max_partial': round(max(tmax), 1) if tmax and not tmax_ok else None,
+                    't_min': round(min(tmin), 1) if tmin_ok else None, 't_min_partial': round(min(tmin), 1) if tmin and not tmin_ok else None,
                     'rh_mean': round(_mean(rh), 1) if enough(rh) else None,
                     'rh_max': round(max(rhmax), 1) if enough(rhmax) else None, 'rh_min': round(min(rhmin), 1) if enough(rhmin) else None,
                     'wind_mean_kmh': round(_mean(wind), 2) if enough(wind) else None,
                     'gust_max_kmh': round(max(gust), 1) if enough(gust) else None,
                     'rain_mm': round(sum(rain), 2) if len(rain) == 24 else None, 'rain_hours': len(rain),
                     'rain_partial_mm': round(sum(rain), 2) if rain else None,
-                    'radiation_mj': round(sum(rad) * 3600 / 1e6, 2) if len(rad) == 24 else None})
+                    'radiation_mj': round(sum(rad) * 3600 / 1e6, 2) if rad_ok else None, 'radiation_hours': len(rad),
+                    'et0_mm': round(sum(et0), 2) if len(et0) == 24 else None})
     return out
 
 
@@ -264,7 +305,7 @@ def load_station(entry, root='.', *, asof=None):
         path = root / file['path']
         text = read_text(path)
         if file['format'] == 'inmet_portal_hourly':
-            records, summary = qc_hourly(parse_inmet_portal_hourly(text))
+            records, summary = qc_hourly(parse_inmet_portal_hourly(text), entry.get('utc_offset_hours', -4))
             hourly.extend(records)
             qc['hourly'] = summary
         elif file['format'] == 'embrapa_guiaclima_daily':

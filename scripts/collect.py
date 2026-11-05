@@ -263,10 +263,12 @@ def model_spread_daily(models: dict) -> list[dict]:
         if block.get('state') != 'ok':
             continue
         d = block['daily']
+        def at(series, i):
+            return series[i] if isinstance(series, list) and i < len(series) else None
         for i, date in enumerate(d.get('time') or []):
-            rain = (d.get('precipitation_sum') or [None] * (i + 1))[i]
-            tmax = (d.get('temperature_2m_max') or [None] * (i + 1))[i]
-            tmin = (d.get('temperature_2m_min') or [None] * (i + 1))[i]
+            rain = at(d.get('precipitation_sum'), i)
+            tmax = at(d.get('temperature_2m_max'), i)
+            tmin = at(d.get('temperature_2m_min'), i)
             row = dates.setdefault(date, {'date': date, 'rain': [], 'tmax': [], 'tmin': [], 'models': []})
             if isinstance(rain, (int, float)):
                 row['rain'].append(float(rain)); row['models'].append(model)
@@ -330,6 +332,8 @@ def forecast_models(*, fetcher=None, model_ids: list[str] | None = None) -> dict
             result['error'] = f'HTTP {status}'
             return result
         result['fallback'] = 'pedido combinado rejeitado (HTTP 400); modelos consultados um a um'
+        for model in ids:  # every requested id keeps an entry even if the loop stops on a rate limit
+            result['models'][model] = {'state': 'unavailable', 'label': DETERMINISTIC_MODELS.get(model, model), 'error': 'não consultado após HTTP 429'}
         try:
             for model in ids:
                 one(model)
@@ -687,7 +691,10 @@ def main(include_local_sources=True):
     result['deterministic_extended'] = forecast_extended()
     result['sources']['Open-Meteo Forecast (complementar)'] = {'state': result['deterministic_extended'].get('state'),
         'collected_at_utc': result['deterministic_extended'].get('collected_at_utc'), 'detail': result['deterministic_extended'].get('error')}
-    result['deterministic_models'] = forecast_models()
+    try:
+        result['deterministic_models'] = forecast_models()
+    except Exception as exc:  # the comparison is optional: never remove the main forecast
+        result['deterministic_models'] = {'state': 'unavailable', 'error': f'{type(exc).__name__}: {str(exc)[:140]}', 'models': {}, 'spread_daily': []}
     result['sources']['Open-Meteo Forecast (multimodelo)'] = {'state': result['deterministic_models'].get('state'),
         'collected_at_utc': result['deterministic_models'].get('collected_at_utc'), 'detail': result['deterministic_models'].get('error'),
         'models_ok': result['deterministic_models'].get('models_ok')}

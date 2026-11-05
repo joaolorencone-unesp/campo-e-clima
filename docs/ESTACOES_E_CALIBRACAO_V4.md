@@ -22,15 +22,15 @@ Só sinaliza; nada é corrigido ou interpolado. Valores vazios, `-9999` e ilegí
 |---|---|---|
 | Faixa física | T −10…48 °C; UR 1…100 %; orvalho −20…35 °C; pressão 850…1050 hPa; vento 0…144 km/h; rajada 0…216 km/h; direção 0…360°; chuva 0…120 mm/h; radiação 0…1500 W/m² | `out_of_range` |
 | Extremos horários | T mín − 0,3 ≤ T ≤ T máx + 0,3 (UR com tolerância 1) | `inconsistent_extremes` |
-| Degrau | variação > 8 °C entre horas consecutivas | `step` |
+| Degrau | variação > 8 °C entre horas consecutivas **não confirmada** pelos extremos da própria hora (quando T máx/mín horárias abrangem as duas leituras, é tempo real — rajada de tempestade ou frente — e nada é marcado) | `step` |
 | Sensor travado | ≥ 6 valores idênticos consecutivos de T; ≥ 12 de vento não nulo | `flatline` |
 | Coerência | rajada < vento − 0,5 km/h; orvalho > T + 0,5 °C | `gust_below_speed`, `dew_above_temperature` |
 
-Resultado nos arquivos recebidos: Naviraí S735 — 4440 linhas, 65 horas totalmente vazias, 2 degraus de temperatura, nenhum outro aviso; Diamantino A949 — 4440 linhas, 19 horas vazias, 3 degraus; Embrapa — 183 dias contínuos, sem lacunas de calendário, 3 dias sem rajada. Os degraus ficam excluídos dos pares, mas o valor original permanece no arquivo.
+Resultado nos arquivos recebidos: Naviraí S735 — 4440 linhas, 65 horas totalmente vazias; Diamantino A949 — 4440 linhas, 19 horas vazias; Embrapa — 183 dias contínuos, sem lacunas de calendário, 3 dias sem rajada. As cinco quedas bruscas de temperatura encontradas (por exemplo 29,6 → 20,0 °C em 31/08 em Naviraí, com 10 mm e rajada de 96 km/h) são confirmadas pelos extremos horários e permanecem válidas. A radiação do portal INMET fica em branco à noite: esses rótulos são marcados `night` (contribuem zero), não `missing`.
 
 ## 3. Agregação por dia local
 
-Fuso UTC−4 para as três estações. Variáveis instantâneas (T, UR, vento, pressão) usam os rótulos cuja hora local cai em 00–23 h; acumulados e extremos horários (chuva, T máx/mín da hora, rajada, radiação) usam os rótulos de hora final 01–24 h local, como já fazia a previsão de chuva do projeto. Chuva diária só é publicada com 24 horas válidas (caso contrário fica "incompleta", com a soma parcial informada separadamente). Médias e extremos exigem pelo menos 20 horas válidas. Com essa regra, Naviraí tem 157 dias completos de chuva e Diamantino 183; a primeira e a última data de cada arquivo são parciais.
+Fuso UTC−4 para as três estações. Variáveis instantâneas (T, UR, vento, pressão) usam os rótulos cuja hora local cai em 00–23 h; acumulados e extremos horários (chuva, T máx/mín da hora, rajada, radiação) usam os rótulos de hora final 01–24 h local, como já fazia a previsão de chuva do projeto. Chuva diária só é publicada com 24 horas válidas (caso contrário fica "incompleta", com a soma parcial informada separadamente como limite inferior). A média diária exige pelo menos 20 horas válidas sem duas horas consecutivas ausentes. A máxima exige, além disso, todos os rótulos de hora final 11–18 h local válidos, e a mínima os rótulos 02–08 h: se a lacuna cai justamente na janela do extremo, publica-se apenas `t_max_partial`/`t_min_partial`, nunca o valor como se fosse o extremo do dia. A radiação diária exige todos os rótulos 07–18 h local presentes. Com essa regra, Naviraí tem 157 dias completos de chuva e Diamantino 183; a primeira e a última data de cada arquivo são parciais.
 
 ## 4. Previsões nas coordenadas das estações
 
@@ -48,13 +48,13 @@ Os valores horários do modelo são agregados pelo mesmo procedimento do item 3;
 | viés por hora do dia | T horária | b_h encolhido para o viés global com k = 10 pseudo-observações |
 | regressão linear | todas as anteriores, vento | y = a + b·x (≥ 30 pares e variância positiva; senão vira viés) |
 | fator multiplicativo | vento, rajada, chuva | y = r·x, r = Σobs/Σprev |
-| mapeamento de quantis | chuva diária | tabelas empíricas de 25 quantis dos dias úmidos (> 0,2 mm); se o modelo tem mais dias úmidos que a estação, o limiar sobe até igualar a frequência observada; acima do maior quantil escala pela razão do topo |
+| mapeamento de quantis | chuva diária | tabelas empíricas de 25 quantis dos dias úmidos (> 0,2 mm), com quantis previstos repetidos fundidos em um só nó (mapa estritamente crescente, idêntico no navegador); se o modelo tem mais dias úmidos que a estação, o limiar sobe até igualar a frequência observada; acima do maior quantil escala pela razão do topo. Exige ≥ 10 dias úmidos observados no treino; com estação seca, o fator multiplicativo volta a 1 (sem correção) |
 
 Saídas são recortadas às faixas físicas (UR 0–100, chuva e vento ≥ 0).
 
 ## 6. Validação fora da amostra
 
-Origem móvel por mês: cada mês é previsto com parâmetros ajustados só nos meses anteriores, descartando os últimos (antecedência + 1) dias antes do mês de teste (purga). Mínimos: 500 pares horários ou 25 diários de treino; 300 horários ou 45 diários de teste acumulado. O erro de cada método é comparado ao da previsão bruta no mesmo conjunto de teste; o intervalo de confiança de 95 % de ΔMAE vem de bootstrap por blocos (dias para séries horárias, semanas ISO para séries diárias; 1000 reamostragens, semente fixa). Uma correção só é **recomendada** quando o limite superior do intervalo é negativo e o ganho relativo de MAE é ≥ 5 %; o método vencedor é então reajustado em todos os pares para uso operacional, e a evidência (n de teste, MAE bruto e corrigido, intervalo, meses testados) é publicada junto. Quando nada passa, o relatório diz o motivo e o valor bruto permanece.
+Origem móvel por mês: cada mês é previsto com parâmetros ajustados só nos meses anteriores, descartando os últimos (antecedência + 1) dias antes do mês de teste (purga). Mínimos: 500 pares horários ou 25 diários de treino; 300 horários ou 45 diários de teste acumulado; para chuva, ainda ≥ 10 dias úmidos observados na janela de treino de cada mês e ≥ 10 no teste acumulado (senão o grupo fica `insufficient_wet_days`). O erro de cada método é comparado ao da previsão bruta no mesmo conjunto de teste; o intervalo de confiança de 95 % de ΔMAE vem de bootstrap por blocos (dias para séries horárias, semanas ISO para séries diárias; 1000 reamostragens, semente fixa). Uma correção só é **recomendada** quando o limite superior do intervalo é negativo e o ganho relativo de MAE é ≥ 5 %; o método vencedor é então reajustado em todos os pares para uso operacional, e a evidência (n de teste, MAE bruto e corrigido, intervalo, meses testados) é publicada junto. Quando nada passa, o relatório diz o motivo e o valor bruto permanece.
 
 Métricas publicadas por estação × modelo × antecedência × variável: n, MAE, RMSE, viés (modelo − estação) de todos os pares e do conjunto de teste; para chuva, tabelas de contingência em 1 e 10 mm (POD, FAR, CSI, viés de frequência) brutas e corrigidas; para variáveis horárias em D1, viés e MAE por hora local e por mês.
 

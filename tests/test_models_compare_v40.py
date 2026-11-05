@@ -58,3 +58,18 @@ def test_rate_limit_and_transport_errors_do_not_raise():
 def test_plain_payload_without_model_fields_is_reported_not_crashed():
     out = collector.forecast_models(fetcher=lambda u, p: {'daily': {'time': ['2026-11-05'], 'precipitation_sum': [1.0]}}, model_ids=['a', 'b'])
     assert out['state'] == 'unavailable' and all(b['state'] == 'unavailable' for b in out['models'].values())
+
+
+def test_ragged_series_and_rate_limited_fallback_keep_every_model_listed():
+    ragged = payload(['a', 'b'])
+    ragged['daily']['precipitation_sum_a'] = [1.0]  # shorter than daily.time
+    out = collector.forecast_models(fetcher=lambda u, p: ragged, model_ids=['a', 'b'])
+    assert out['state'] == 'ok' and out['spread_daily'][0]['models'] == 2 and out['spread_daily'][2]['models'] == 1
+    calls = []
+    def fetcher(url, params):
+        calls.append(params['models'])
+        if ',' in params['models']:
+            raise http_error(400)
+        raise http_error(429) if params['models'] == 'a' else http_error(400)
+    out = collector.forecast_models(fetcher=fetcher, model_ids=['a', 'b', 'c'])
+    assert set(out['models']) == {'a', 'b', 'c'} and out['models']['b']['error'] == 'não consultado após HTTP 429' and calls == ['a,b,c', 'a']

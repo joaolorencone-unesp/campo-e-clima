@@ -46,6 +46,7 @@ MIN_TRAIN = {'hourly': 500, 'daily': 25}
 MIN_TEST = {'hourly': 300, 'daily': 45}
 MIN_IMPROVEMENT = 0.05
 WET_MM = 0.2
+MIN_WET_DAYS = 10             # observed wet days needed in a training window and in the pooled test for rain corrections
 BOOTSTRAP = 1000
 SEED = 22
 
@@ -200,8 +201,8 @@ def fit(method, x, y, hours=None):
     if method == 'bias':
         return {'method': method, 'bias': float(np.mean(y - x))}
     if method == 'ratio':
-        total = float(np.sum(x))
-        return {'method': method, 'ratio': float(np.sum(y) / total) if total > 0 else 1.0}
+        total, observed = float(np.sum(x)), float(np.sum(y))
+        return {'method': method, 'ratio': float(observed / total) if total > 0 and observed > 0 else 1.0}
     if method == 'linear':
         if len(x) < 30 or float(np.var(x)) <= 1e-9:
             return {'method': method, 'slope': 1.0, 'intercept': float(np.mean(y - x))}
@@ -226,9 +227,17 @@ def fit(method, x, y, hours=None):
             threshold = float(np.quantile(x, 1 - wet_obs))
         xs, ys = np.sort(x[x > threshold]), np.sort(y[y > WET_MM])
         probs = np.linspace(0.02, 0.98, 25)
-        if len(xs) < 10 or len(ys) < 10:
+        if len(xs) < MIN_WET_DAYS or len(ys) < MIN_WET_DAYS:
             return {'method': method, 'threshold': threshold, 'qx': [], 'qy': [], 'fallback_ratio': fit('ratio', x, y)['ratio']}
-        return {'method': method, 'threshold': threshold, 'qx': np.quantile(xs, probs).round(3).tolist(), 'qy': np.quantile(ys, probs).round(3).tolist(),
+        qx, qy = np.quantile(xs, probs), np.quantile(ys, probs)
+        # Tied forecast quantiles (0.1 mm resolution) would make the mapping ambiguous: one point per distinct qx,
+        # with the mean of its observed quantiles, and a monotone (non-decreasing) qy.
+        unique, inverse = np.unique(qx.round(3), return_inverse=True)
+        merged = np.array([qy[inverse == i].mean() for i in range(len(unique))])
+        merged = np.maximum.accumulate(merged)
+        if len(unique) < 2:
+            return {'method': method, 'threshold': threshold, 'qx': [], 'qy': [], 'fallback_ratio': fit('ratio', x, y)['ratio']}
+        return {'method': method, 'threshold': threshold, 'qx': unique.round(3).tolist(), 'qy': merged.round(3).tolist(),
                 'wet_frequency_obs': round(wet_obs, 4), 'wet_frequency_forecast': round(wet_fc, 4)}
     raise ValueError(method)
 
@@ -277,6 +286,8 @@ def rolling_origin(pairs, methods, *, kind, lead_days, variable):
         test = [p for p in pairs if p['date'][:7] == month]
         if len(train) < MIN_TRAIN[kind] or not test:
             continue
+        if variable == 'rain_mm' and sum(1 for p in train if p['y'] > WET_MM) < MIN_WET_DAYS:
+            continue  # a dry-season window cannot teach a rain correction
         tx, ty, th = [p['x'] for p in train], [p['y'] for p in train], [p['hour'] for p in train]
         sx, sh = [p['x'] for p in test], [p['hour'] for p in test]
         for m in methods:
@@ -334,6 +345,10 @@ def evaluate_group(pairs, *, kind, lead_days, variable, methods):
         result['raw_contingency'] = [contingency([p['x'] for p in pairs], [p['y'] for p in pairs], t) for t in (1, 10)]
     if n_test < MIN_TEST[kind]:
         result['status'] = 'insufficient_test_sample'
+        return result
+    if variable == 'rain_mm' and sum(1 for y in pooled['y'] if y > WET_MM) < MIN_WET_DAYS:
+        result['status'] = 'insufficient_wet_days'
+        result['wet_days_test'] = sum(1 for y in pooled['y'] if y > WET_MM)
         return result
     raw_test = metrics(pooled['raw'], pooled['y'])
     result['raw_test'] = raw_test
@@ -480,8 +495,15 @@ def run(*, fetch=False, fixture=None, output_dir='site/data/stations', runtime='
         forecasts = {'point': forecast_point(entry), 'models': {}, 'leads': list(LEADS)}
         if fixture_data is not None:
             for model, per_lead in (fixture_data.get(entry['id']) or {}).items():
-                forecasts['models'][model] = {'state': 'ok', 'blocks': 1, 'errors': [], 'variables': list(CORE_VARIABLES),
-                                              'hourly': {int(n): payload_to_records(payload, (int(n),))[int(n)] for n, payload in per_lead.items()}}
+                state = {'state': 'ok', 'blocks': 1, 'errors': [], 'variables': list(CORE_VARIABLES), 'hourly': {}}
+                for n, payload in per_lead.items():
+                    try:
+                        state['hourly'][int(n)] = payload_to_records(payload, (int(n),))[int(n)]
+                    except (ValueError, TypeError, KeyError) as exc:
+                        state['errors'].append({'lead': n, 'error': f'{type(exc).__name__}: {str(exc)[:120]}'})
+                if not state['hourly']:
+                    state.update(state='unavailable')
+                forecasts['models'][model] = state
         elif fetch and data['period']:
             from .capture import Capture
             from .http import FreeClient

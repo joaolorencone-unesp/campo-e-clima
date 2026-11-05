@@ -82,7 +82,7 @@ jobs:
               for v in r['verification']:
                   if v.get('status')!='evaluated':continue
                   rec=v.get('recommended')
-                  print(f"{v['model']:28s} D{v['lead_days']} {v['variable']:20s} n={v['raw_all_pairs']['n']:5d} MAE={v['raw_all_pairs']['mae']:7.2f} bias={v['raw_all_pairs']['bias']:7.2f}"+(f" -> {rec['method']} MAE={rec['evidence']['mae_corrected']:.2f} skill={rec['evidence']['skill_mae']:.2f} CI={rec['evidence']['delta_mae_ci95']}" if rec else ''))
+                  print(f"{v['model']:28s} D{v['lead_days']} {v['variable']:20s} n={v['raw_all_pairs']['n']:5d} MAE={v['raw_all_pairs']['mae']:7.2f} bias={v['raw_all_pairs']['bias']:7.2f}"+(f" -> {rec['method']}: test MAE raw {rec['evidence']['mae_raw']:.2f} -> {rec['evidence']['mae_corrected']:.2f} skill={rec['evidence']['skill_mae']:.2f} CI={rec['evidence']['delta_mae_ci95']}" if rec else ''))
           PY
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: steps.changed.outputs.run == 'true' && always()

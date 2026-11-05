@@ -81,3 +81,54 @@ def test_daily_ledger_caps_calls(monkeypatch, tmp_path):
     assert ab.generate(public(), now=NOW, provider='groq', session=Session(), ledger=ledger)['status'] == 'llm'
     second = ab.generate(public(), now=NOW, provider='groq', session=Session(), ledger=ledger)
     assert second['status'] == 'rules_fallback' and 'cota' in second['error']
+
+
+def test_validator_blocks_thousands_separators_dates_unit_words_signs_and_operational_advice(monkeypatch):
+    sheet = ab.build_facts(public(), now=NOW)
+    bad = ['Podem cair 1.000 mm hoje.', 'Chuva de 8,749 mm hoje.', 'Chuva forte prevista para 2026-11-07.', 'Chuva forte prevista para 20/11.',
+           'Há 90 por cento de chance de chuva de 40 milímetros amanhã.', 'Temperatura pode chegar a 30 graus.', 'Mínima de -31 °C amanhã.',
+           'Vai chover cinquenta milímetros amanhã.', 'Boa janela para pulverização amanhã: mediana 8,7 mm.', 'Recomenda-se aplicar herbicida.']
+    for text in bad:
+        ok, why = ab.validate_text(text, sheet)
+        assert not ok, text
+    good = ['Mediana de 8,7 mm hoje (2026-11-05) e temperatura entre 20 e 31 °C; 89 por cento dos membros com mais de 1 mm. '
+            'Percentuais são frequências de membros dos ensembles, não probabilidades calibradas; este texto não é orientação operacional.',
+            'Chuva prevista para 05/11: mediana 8,7 mm, mínima de 20 °C.']
+    for text in good:
+        ok, why = ab.validate_text(text, sheet)
+        assert ok, (text, why)
+    monkeypatch.setattr(ab, 'MAX_WORDS', 400)  # the rule-based baseline lists every fact; only its length exceeds the LLM budget
+    assert ab.validate_text(ab.rule_based_text(sheet), sheet)[0], 'the rule-based text must pass its own validator'
+
+
+def test_missing_member_frequencies_are_omitted_not_zero():
+    data = public()
+    data['rain_ensemble_daily'][0].pop('p_gt_1_mm'); data['rain_ensemble_daily'][0]['p_gt_20_mm'] = None
+    data['rain_ensemble_accumulated'][0]['p_gt_25_mm'] = None
+    text = '\n'.join(ab.build_facts(data, now=NOW)['facts'])
+    assert '0% dos membros' not in text and '0% acima' not in text and 'mediana 8,7 mm' in text and 'Acumulado em 7 dias' in text
+
+
+def test_provider_errors_never_publish_urls_and_null_content_falls_back(monkeypatch, tmp_path):
+    monkeypatch.setenv('CLOUDFLARE_API_TOKEN', 'k'); monkeypatch.setenv('CLOUDFLARE_ACCOUNT_ID', 'acct-secret-1234567890')
+    class Boom:
+        def post(self, url, **k):
+            raise requests.ConnectionError(f"Max retries exceeded with url: {url}")
+    out = ab.generate(public(), now=NOW, provider='cloudflare', session=Boom(), ledger=tmp_path / 'l.json')
+    assert out['status'] == 'rules_fallback' and 'acct-secret' not in json.dumps(out) and out['error'].startswith('ConnectionError')
+    class Null:
+        def post(self, url, **k):
+            r = requests.Response(); r.status_code = 200; r._content = b'{"choices":[{"message":{"role":"assistant","content":null}}]}'; return r
+    monkeypatch.setenv('GROQ_API_KEY', 'k')
+    out = ab.generate(public(), now=NOW, provider='groq', session=Null(), ledger=tmp_path / 'l2.json')
+    assert out['status'] == 'rules_fallback' and out['text'] == out['rule_based_text']
+
+
+def test_ledger_defaults_to_the_persisted_publication_directory(monkeypatch, tmp_path):
+    monkeypatch.setenv('PREVIOUS_PUBLICATION_DIR', str(tmp_path / 'prev')); monkeypatch.setenv('GROQ_API_KEY', 'k'); monkeypatch.setenv('AI_MAX_CALLS_PER_DAY', '1')
+    class Session:
+        def post(self, *a, **k):
+            r = requests.Response(); r.status_code = 200; r._content = b'{"choices":[{"message":{"content":"Mediana 8,7 mm. Percentuais s\xc3\xa3o frequ\xc3\xaancias de membros, n\xc3\xa3o probabilidades calibradas."}}]}'; return r
+    assert ab.generate(public(), now=NOW, provider='groq', session=Session())['status'] == 'llm'
+    assert (tmp_path / 'prev' / 'ai_bulletin_ledger.json').exists()
+    assert ab.generate(public(), now=NOW, provider='groq', session=Session())['status'] == 'rules_fallback'

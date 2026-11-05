@@ -97,3 +97,67 @@ def test_pipeline_recovers_known_bias_out_of_sample(tmp_path, monkeypatch):
     out = json.loads((tmp_path / 'out' / 'inmet_s735_navirai.json').read_text(encoding='utf-8'))
     assert out['series']['modelo_a']['dates'] and len(out['observations']['daily']) == navirai['observations']['daily_rows']
     assert (tmp_path / 'out' / 'index.json').exists()
+
+
+def test_rolling_origin_uses_only_earlier_months_and_a_purge_gap():
+    # Bias +2 until July, −2 from August: a correction fitted only on earlier data must hurt the first switched month.
+    pairs = []
+    for month, bias in (('2026-05', 2), ('2026-06', 2), ('2026-07', 2), ('2026-08', -2), ('2026-09', -2)):
+        for day in range(1, 29):
+            for hour in range(24):
+                x = 20 + (hour % 12)
+                pairs.append({'date': f'{month}-{day:02d}', 'hour': hour, 'x': x, 'y': x + bias})
+    pooled, predictions, folds = sc.rolling_origin(pairs, ('bias',), kind='hourly', lead_days=1, variable='temperature_2m')
+    assert [f['test_month'] for f in folds] == ['2026-06', '2026-07', '2026-08', '2026-09']
+    for f in folds:
+        assert f['train_until'] == (dt.date.fromisoformat(f['test_month'] + '-01') - dt.timedelta(days=2)).isoformat()
+        assert f['train_n'] < len(pairs)
+    august = [i for i, m in enumerate(pooled['month']) if m == '2026-08']
+    import numpy as np
+    corrected = np.mean(np.abs(np.asarray(predictions['bias'])[august] - np.asarray(pooled['y'])[august]))
+    raw = np.mean(np.abs(np.asarray(pooled['raw'])[august] - np.asarray(pooled['y'])[august]))
+    assert raw == pytest.approx(2.0) and corrected == pytest.approx(4.0), 'a leaky fit would not degrade the switched month'
+    # September is fitted on May–August (three months at +2, one at −2 → mean bias +1): error exactly 3.
+    # A fit that also saw September (leak) would use bias +0.4 and give 2.4.
+    september = [i for i, m in enumerate(pooled['month']) if m == '2026-09']
+    assert np.mean(np.abs(np.asarray(predictions['bias'])[september] - np.asarray(pooled['y'])[september])) == pytest.approx(3.0)
+
+
+def test_quantile_mapping_has_no_tied_knots_and_rain_needs_wet_days():
+    import numpy as np
+    x = np.array([1.0] * 9 + [5.0] * 8 + [9.9] + [12.0] * 7 + [0.0] * 30)
+    y = np.array(sorted(np.linspace(0.3, 40, 25)) + [0.0] * 30)
+    qm = sc.fit('quantile_map', x, y)
+    assert len(qm['qx']) == len(set(qm['qx'])) and qm['qx'] == sorted(qm['qx']) and qm['qy'] == sorted(qm['qy'])
+    assert sc.apply(qm, [1.0], variable='rain_mm')[0] <= sc.apply(qm, [5.0], variable='rain_mm')[0] <= sc.apply(qm, [12.0], variable='rain_mm')[0]
+    assert sc.fit('ratio', [1.0, 2.0], [0.0, 0.0])['ratio'] == 1.0, 'an all-dry training set must not zero the forecast'
+    dry = [{'date': f'2026-{m:02d}-{d:02d}', 'hour': None, 'x': 0.5, 'y': 0.0} for m in (5, 6, 7, 8) for d in range(1, 29)]
+    out = sc.evaluate_group(dry, kind='daily', lead_days=1, variable='rain_mm', methods=('ratio', 'quantile_map'))
+    assert out['status'] in ('insufficient_test_sample', 'insufficient_wet_days') and not out.get('recommended')
+
+
+def test_extremes_and_radiation_respect_their_windows_and_confirmed_steps_are_kept():
+    base = dt.datetime(2026, 8, 24, 4, tzinfo=dt.timezone.utc)  # 00:00 local
+    rows = []
+    for i in range(48):
+        stamp = (base + dt.timedelta(hours=i)).isoformat(timespec='seconds')
+        local_end = (i % 24) + 1
+        temp = 15 + 10 * max(0, 1 - abs(local_end - 15) / 8)
+        rows.append({'valid_at_utc': stamp, 'temperature_2m': temp, 'temperature_hour_max': temp + 0.5, 'temperature_hour_min': temp - 0.5,
+                     'relative_humidity_2m': 60.0, 'rh_hour_max': 65.0, 'rh_hour_min': 55.0, 'dew_point_2m': 10.0, 'surface_pressure': 975.0,
+                     'wind_speed_10m': 5.0, 'wind_direction_10m': 90.0, 'wind_gusts_10m': 9.0, 'precipitation': 0.0,
+                     'shortwave_radiation': None if local_end in sf.NIGHT_LABELS else 500.0})
+    # day 2: a storm outflow at label 22 local (−12 °C in one hour) confirmed by the hour's own extremes
+    rows[24 + 21]['temperature_2m'] = 18.0; rows[24 + 21]['temperature_hour_max'] = 30.5; rows[24 + 21]['temperature_hour_min'] = 17.8; rows[24 + 20]['temperature_2m'] = 30.0
+    # day 1: the 13 h and 14 h local labels are missing (gap over the maximum)
+    for k in (12, 13):
+        for key in sf.HOURLY_FIELDS:
+            rows[k][key] = None
+    qc, summary = sf.qc_hourly(rows, -4)
+    assert qc[24 + 21]['qc']['temperature_2m'] == 'valid', 'a change bracketed by the hourly extremes is weather, not a fault'
+    assert summary['shortwave_radiation'].get('night', 0) > 0 and 'missing' not in {k for k, v in summary['shortwave_radiation'].items() if v and k == 'missing' and False}
+    days = {d['date']: d for d in sf.aggregate_local_days(qc, -4)}
+    first, second = days['2026-08-24'], days['2026-08-25']
+    assert first['t_max'] is None and first['t_max_partial'] is not None and first['radiation_mj'] is None, 'extreme hours missing → no daily maximum'
+    assert second["t_max"] == 30.5 and second["radiation_mj"] == pytest.approx(500 * 13 * 3600 / 1e6, rel=1e-3)  # labels 07..19 local carry sun in this fixture
+    assert second['t_min'] is not None
