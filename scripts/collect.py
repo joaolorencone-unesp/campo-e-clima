@@ -222,6 +222,134 @@ def forecast_extended(*, fetcher=None) -> dict:
             'note': 'Variáveis complementares indisponíveis nesta coleta; a previsão principal não é afetada.'}
 
 
+# Deterministic global models offered by Open-Meteo (free, CC BY 4.0). Labels are for the UI;
+# an unknown id makes the provider answer HTTP 400, so the combined request falls back to
+# one request per model and the invalid ones are reported instead of removing the product.
+DETERMINISTIC_MODELS = {
+    'ecmwf_ifs025': 'ECMWF IFS 0,25°', 'ecmwf_aifs025_single': 'ECMWF AIFS (IA)', 'gfs_global': 'NOAA GFS',
+    'gfs_graphcast025': 'GraphCast (IA, GFS)', 'icon_seamless': 'DWD ICON', 'gem_global': 'CMC GEM',
+    'meteofrance_arpege_world': 'Météo-France ARPEGE', 'ukmo_global_deterministic_10km': 'UK Met Office 10 km', 'jma_gsm': 'JMA GSM'}
+MODEL_DAILY = ['temperature_2m_max', 'temperature_2m_min', 'precipitation_sum', 'wind_gusts_10m_max', 'weather_code']
+MODEL_HOURLY = ['precipitation', 'temperature_2m']
+
+
+def deterministic_model_ids() -> list[str]:
+    raw = os.environ.get('DETERMINISTIC_MODELS', '').strip()
+    return [m.strip() for m in raw.split(',') if m.strip()] if raw else list(DETERMINISTIC_MODELS)
+
+
+def _model_block(payload: dict, model: str, *, suffixed: bool) -> dict | None:
+    daily, hourly = payload.get('daily') or {}, payload.get('hourly') or {}
+    key = (lambda v: f'{v}_{model}') if suffixed else (lambda v: v)
+    if not daily.get('time') or not any(isinstance(daily.get(key(v)), list) for v in MODEL_DAILY):
+        return None
+    block = {'state': 'ok', 'label': DETERMINISTIC_MODELS.get(model, model), 'daily': {'time': daily['time']},
+             'hourly': {'time': (hourly.get('time') or [])[:72]}}
+    for v in MODEL_DAILY:
+        values = daily.get(key(v))
+        block['daily'][v] = values if isinstance(values, list) else None
+    for v in MODEL_HOURLY:
+        values = hourly.get(key(v))
+        block['hourly'][v] = values[:72] if isinstance(values, list) else None
+    if all(block['daily'][v] is None or not any(isinstance(x, (int, float)) for x in block['daily'][v]) for v in MODEL_DAILY):
+        return None
+    return block
+
+
+def model_spread_daily(models: dict) -> list[dict]:
+    """Per day: range of daily rain and T max across the valid models (equal weight, no calibration)."""
+    dates: dict[str, dict] = {}
+    for model, block in models.items():
+        if block.get('state') != 'ok':
+            continue
+        d = block['daily']
+        def at(series, i):
+            return series[i] if isinstance(series, list) and i < len(series) else None
+        for i, date in enumerate(d.get('time') or []):
+            rain = at(d.get('precipitation_sum'), i)
+            tmax = at(d.get('temperature_2m_max'), i)
+            tmin = at(d.get('temperature_2m_min'), i)
+            row = dates.setdefault(date, {'date': date, 'rain': [], 'tmax': [], 'tmin': [], 'models': []})
+            if isinstance(rain, (int, float)):
+                row['rain'].append(float(rain)); row['models'].append(model)
+            if isinstance(tmax, (int, float)):
+                row['tmax'].append(float(tmax))
+            if isinstance(tmin, (int, float)):
+                row['tmin'].append(float(tmin))
+    out = []
+    for date in sorted(dates):
+        row = dates[date]
+        rain = sorted(row['rain'])
+        if not rain:
+            continue
+        median = rain[len(rain) // 2] if len(rain) % 2 else (rain[len(rain) // 2 - 1] + rain[len(rain) // 2]) / 2
+        out.append({'date': date, 'models': len(rain), 'rain_min_mm': round(rain[0], 1), 'rain_median_mm': round(median, 1), 'rain_max_mm': round(rain[-1], 1),
+                    'models_wet_1mm': sum(1 for r in rain if r >= 1), 'models_wet_10mm': sum(1 for r in rain if r >= 10),
+                    'tmax_min': round(min(row['tmax']), 1) if row['tmax'] else None, 'tmax_max': round(max(row['tmax']), 1) if row['tmax'] else None,
+                    'tmin_min': round(min(row['tmin']), 1) if row['tmin'] else None, 'tmin_max': round(max(row['tmin']), 1) if row['tmin'] else None})
+    return out
+
+
+def forecast_models(*, fetcher=None, model_ids: list[str] | None = None) -> dict:
+    """Side-by-side deterministic runs of several global models at the same point.
+
+    One combined request (``models=a,b,c``); on HTTP 400 (an id the provider no longer
+    accepts) each model is requested alone so the others survive. Nothing here is a new
+    ensemble member: the ensemble products stay separate.
+    """
+    fetcher = fetcher or fetch
+    ids = model_ids or deterministic_model_ids()
+    now = dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds')
+    result = {'state': 'unavailable', 'requested': ids, 'models': {}, 'spread_daily': [], 'collected_at_utc': now,
+              'source': 'Open-Meteo Forecast API, parâmetro models= (determinístico por modelo)',
+              'note': 'Modelos determinísticos lado a lado no mesmo ponto; a dispersão entre modelos não é probabilidade calibrada.'}
+    base = {**base_params(), 'forecast_days': 7, 'daily': ','.join(MODEL_DAILY), 'hourly': ','.join(MODEL_HOURLY)}
+    def one(model: str) -> None:
+        try:
+            payload = fetcher(FORECAST_URL, {**base, 'models': model})
+            block = _model_block(payload, model, suffixed=False)
+            result['models'][model] = block or {'state': 'unavailable', 'label': DETERMINISTIC_MODELS.get(model, model), 'error': 'sem campos diários'}
+        except requests.HTTPError as exc:
+            status = exc.response.status_code if exc.response is not None else None
+            result['models'][model] = {'state': 'unavailable', 'label': DETERMINISTIC_MODELS.get(model, model), 'error': f'HTTP {status}'}
+            if status == 429:
+                raise
+        except (requests.RequestException, ValueError, TypeError) as exc:
+            result['models'][model] = {'state': 'unavailable', 'label': DETERMINISTIC_MODELS.get(model, model), 'error': f'{type(exc).__name__}: {str(exc)[:100]}'}
+    try:
+        payload = fetcher(FORECAST_URL, {**base, 'models': ','.join(ids)})
+        for model in ids:
+            block = _model_block(payload, model, suffixed=len(ids) > 1)
+            result['models'][model] = block or {'state': 'unavailable', 'label': DETERMINISTIC_MODELS.get(model, model), 'error': 'sem campos para este modelo na resposta combinada'}
+        if not any(b.get('state') == 'ok' for b in result['models'].values()):
+            result['error'] = 'resposta combinada sem campos por modelo'
+    except requests.HTTPError as exc:
+        status = exc.response.status_code if exc.response is not None else None
+        if status == 429:
+            result['error'] = 'HTTP 429: limite gratuito; comparação multimodelo adiada'
+            return result
+        if status != 400:
+            result['error'] = f'HTTP {status}'
+            return result
+        result['fallback'] = 'pedido combinado rejeitado (HTTP 400); modelos consultados um a um'
+        for model in ids:  # every requested id keeps an entry even if the loop stops on a rate limit
+            result['models'][model] = {'state': 'unavailable', 'label': DETERMINISTIC_MODELS.get(model, model), 'error': 'não consultado após HTTP 429'}
+        try:
+            for model in ids:
+                one(model)
+                time.sleep(.2)
+        except requests.HTTPError:
+            result['error'] = 'HTTP 429 durante consultas individuais'
+    except (requests.RequestException, ValueError, TypeError) as exc:
+        result['error'] = f'{type(exc).__name__}: {str(exc)[:140]}'
+        return result
+    valid = {m: b for m, b in result['models'].items() if b.get('state') == 'ok'}
+    result['spread_daily'] = model_spread_daily(valid)
+    result['state'] = 'ok' if valid else 'unavailable'
+    result['models_ok'] = sorted(valid)
+    return result
+
+
 def previous_publication_path() -> pathlib.Path:
     root = pathlib.Path(os.environ.get('PREVIOUS_PUBLICATION_DIR', 'runtime/previous_publication'))
     return root / f'{LAT:.3f}_{LON:.3f}.json'
@@ -544,7 +672,7 @@ def main(include_local_sources=True):
     result: dict[str, Any] = {'schema_version': 5, 'issued_at_utc': recorded,
              'site': {'latitude': LAT, 'longitude': LON, 'timezone': TZ, 'utc_offset_seconds': expected_offset_seconds(now_utc)},
              'methodology': 'Equal total weight per valid ensemble model; uncalibrated member frequencies; forward 1/3/6h totals from joint member trajectories; hourly windows use only models whose native precipitation step fits the window; multi-day totals and dry spells per member trajectory; interpolated hourly grids are not independent measurements',
-             'sources': {}, 'deterministic': None, 'deterministic_extended': None, 'rain_ensemble_daily': [], 'gust_ensemble_daily': [], 'rain_ensemble_hourly': [], 'rain_models_daily': [], 'ensemble_models': {},
+             'sources': {}, 'deterministic': None, 'deterministic_extended': None, 'deterministic_models': None, 'rain_ensemble_daily': [], 'gust_ensemble_daily': [], 'rain_ensemble_hourly': [], 'rain_models_daily': [], 'ensemble_models': {},
              'rain_ensemble_accumulated': [], 'rain_dry_spell': None, 'rain_model_agreement_daily': [], 'agro_ensemble_hourly': [], 'agro_ensemble_coverage': {},
              'spray_joint_hourly': [], 'spray_joint_windows_2h': [], 'spray_joint_model_status': {},
              'previous_run_comparison': None,
@@ -563,6 +691,13 @@ def main(include_local_sources=True):
     result['deterministic_extended'] = forecast_extended()
     result['sources']['Open-Meteo Forecast (complementar)'] = {'state': result['deterministic_extended'].get('state'),
         'collected_at_utc': result['deterministic_extended'].get('collected_at_utc'), 'detail': result['deterministic_extended'].get('error')}
+    try:
+        result['deterministic_models'] = forecast_models()
+    except Exception as exc:  # the comparison is optional: never remove the main forecast
+        result['deterministic_models'] = {'state': 'unavailable', 'error': f'{type(exc).__name__}: {str(exc)[:140]}', 'models': {}, 'spread_daily': []}
+    result['sources']['Open-Meteo Forecast (multimodelo)'] = {'state': result['deterministic_models'].get('state'),
+        'collected_at_utc': result['deterministic_models'].get('collected_at_utc'), 'detail': result['deterministic_models'].get('error'),
+        'models_ok': result['deterministic_models'].get('models_ok')}
 
     by_model = {}
     by_model_hourly = {}

@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "note": "Arquivos de estações físicas fornecidos ao projeto (download pelo usuário). Coordenadas do catálogo oficial INMET /estacoes/T quando existem; nenhuma coordenada foi estimada. A estação Embrapa não informa coordenadas no arquivo: a comparação usa o ponto de referência municipal e fica marcada como aproximada até que as coordenadas sejam fornecidas.",
+  "stations": [
+    {
+      "id": "INMET:S735",
+      "slug": "inmet_s735_navirai",
+      "code": "S735",
+      "name": "NAVIRAI (FAZ. SANTA HELENA DO PINDO)",
+      "institution": "SEMADESC-MS (rede parceira no catálogo INMET)",
+      "location_id": "navirai",
+      "latitude": -22.899909,
+      "longitude": -53.869219,
+      "altitude_m": 303,
+      "timezone": "America/Campo_Grande",
+      "utc_offset_hours": -4,
+      "identity_status": "catalog_verified",
+      "coordinates_source": "Catálogo INMET https://apitempo.inmet.gov.br/estacoes/T (CD_ESTACAO S735, consultado 2026-11-05)",
+      "evidence_url": "https://tempo.inmet.gov.br/TabelaEstacoes/S735",
+      "files": [
+        {"path": "data/stations/inmet_S735_navirai_2026-05-05_2026-11-05.csv.gz", "format": "inmet_portal_hourly",
+         "original_name": "estacao_navirai.csv", "original_sha256": "f0ed698afea9313550327d54e71653303cdb15ce0ba78cbc134e8b5917d506dc",
+         "period": ["2026-05-05", "2026-11-05"], "provided_by": "usuário (exportação do portal INMET)", "provided_at": "2026-11-05"}
+      ]
+    },
+    {
+      "id": "INMET:A949",
+      "slug": "inmet_a949_diamantino",
+      "code": "A949",
+      "name": "DIAMANTINO",
+      "institution": "INMET",
+      "location_id": "diamantino",
+      "latitude": -14.37777777,
+      "longitude": -56.37972221,
+      "altitude_m": 317,
+      "timezone": "America/Cuiaba",
+      "utc_offset_hours": -4,
+      "identity_status": "catalog_verified",
+      "coordinates_source": "Catálogo INMET https://apitempo.inmet.gov.br/estacoes/T (CD_ESTACAO A949, consultado 2026-11-05)",
+      "evidence_url": "https://tempo.inmet.gov.br/TabelaEstacoes/A949",
+      "files": [
+        {"path": "data/stations/inmet_A949_diamantino_2026-05-05_2026-11-05.csv.gz", "format": "inmet_portal_hourly",
+         "original_name": "estacao_diamantino.csv", "original_sha256": "4e3ffc095adac087c9e5f6670a3b1168dc43ace0b38f95690ae8c2428db4d12d",
+         "period": ["2026-05-05", "2026-11-05"], "provided_by": "usuário (exportação do portal INMET)", "provided_at": "2026-11-05"}
+      ]
+    },
+    {
+      "id": "EMBRAPA:NAVIRAI_IFMS",
+      "slug": "embrapa_navirai_ifms",
+      "code": null,
+      "name": "Naviraí (IFMS) — Embrapa Guia Clima",
+      "institution": "Embrapa Agropecuária Oeste (Guia Clima) / IFMS",
+      "location_id": "navirai",
+      "latitude": null,
+      "longitude": null,
+      "altitude_m": null,
+      "timezone": "America/Campo_Grande",
+      "utc_offset_hours": -4,
+      "identity_status": "provisional",
+      "coordinates_source": "não informadas no arquivo; preencher latitude/longitude da estação para comparação no ponto exato",
+      "forecast_point_fallback": {"latitude": -23.065, "longitude": -54.19, "note": "ponto de referência municipal do projeto; comparação aproximada"},
+      "evidence_url": "https://www.cpao.embrapa.br/gc/busca-de-dados",
+      "files": [
+        {"path": "data/stations/embrapa_guiaclima_navirai_ifms_2026-05-05_2026-11-03.html.gz", "format": "embrapa_guiaclima_daily",
+         "original_name": "dados_embrapa_navirai.xls", "original_sha256": "04e0c420e4b563691913ed5745eb8e3bf147467a5b343b65ee7e5a577c403c5c",
+         "period": ["2026-05-05", "2026-11-03"], "provided_by": "usuário (exportação Guia Clima)", "provided_at": "2026-11-05",
+         "notes": "Vento U2 medido a 2 m; convertido para 10 m pelo perfil logarítmico FAO-56 (fator 1/0,748) apenas para comparação aproximada."}
+      ]
+    }
+  ]
+}

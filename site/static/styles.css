@@ -188,3 +188,83 @@ body.mode-simple .tabs{gap:8px}
 @media(max-width:480px){.farm-cards{grid-template-columns:1fr 1fr}.farm-card .note{display:none}.diag-grid{grid-template-columns:1fr}.mode-switch button{padding:6px 10px;font-size:11px}}
 
 body.mode-simple .masthead-inner{padding-top:22px;padding-bottom:18px}body.mode-simple h1{font-size:clamp(32px,4vw,46px)}body.mode-simple .point-panel{padding:16px 20px;margin:14px 0 10px}body.mode-simple .point-top h2{font-size:18px;margin:4px 0}
+
+/* ===== Campo e Clima v4 — identidade visual do logo oficial (navy, verdes, azul-céu, vermelho só para alertas) ===== */
+:root{--bn:#0f2a66;--bn-deep:#081c4c;--bg1:#0f7a3b;--bg1-dark:#0a5c2d;--bg1-leaf:#22a327;--bsky:#0b8df0;--bred:#e0101f;--bbg:#f4f7f5;--bpaper:#ffffff;--bink:#13213f;--bmuted:#5b6b7e;--bline:#d7e1dc;
+ --blue:var(--bn);--navy:var(--bn);--green:var(--bg1);--red:var(--bred);--bg:var(--bbg);--ink:var(--bink);--muted:var(--bmuted);--border:var(--bline);--c-accent:var(--bg1);--c-ink:var(--bink)}
+body{background:var(--bbg);color:var(--bink)}
+.masthead{background:#fff;border-bottom:3px solid var(--bg1)}
+.masthead-inner{padding-top:16px;padding-bottom:14px;gap:24px}
+.brand{display:flex;align-items:center;gap:18px;min-width:0}
+.brand-logo{height:74px;width:auto;display:block}
+.brand-logo-icon{display:none;height:56px;width:auto}
+.brand-text{min-width:0}
+.brand-text .eyebrow{color:var(--bg1-dark);letter-spacing:.14em}
+.brand-text h1{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.brand-text p{margin:4px 0 2px;color:#3f5272;font-size:14px}
+.brand-text .coord{color:#5d6f85}
+.primary,button.primary{background:var(--bg1);border-color:var(--bg1);box-shadow:0 5px 14px rgba(15,122,59,.22)}.primary:hover,button.primary:hover{background:var(--bg1-dark)}
+.pill{color:var(--bn);border-color:#c5d6cd;background:#f3f8f5}.pill:hover{background:#e8f2ec}
+.mode-switch{border-color:#c5d1e3}.mode-switch button{color:var(--bn)}.mode-switch button.active{background:var(--bn);color:#fff}
+.nav-groups button{color:var(--bn);border-color:#cbd8d0;background:#f7faf8}.nav-groups button.active{background:var(--bn);border-color:var(--bn)}
+.tabs button.active{background:var(--bg1);border-color:var(--bg1)}
+.tag{background:var(--bn)}.tag.blue{background:var(--bsky)}.tag.amber{background:#9a6b1d}.tag.gray{background:#6f8194}
+h1,h2,h3{color:var(--bn)}.farm-head h2,.point-top h2{color:var(--bn)}
+.notice{background:#eef6f1;border-color:#cfe3d7;color:#1f4d35}.notice.warning{background:#fff6e8;border-color:#f0d9ad;color:#8a5a12}.notice.muted{background:#f3f6f4;border-color:#dbe4de;color:#5a6b7e}
+.farm-summary{background:linear-gradient(135deg,#ffffff 0%,#f1f8f3 100%);border-color:#cfe0d5}
+.farm-card{border-color:#d9e4dd}.farm-card.tone-wet{border-color:#a9cdea;background:linear-gradient(180deg,#fff,#edf6fd)}
+.farm-card strong,.rain-big,.diag-kpi strong{color:var(--bn)}
+.window-list li{background:#eef7f1;border-color:#cfe4d6;color:#1f5a3c}
+.metric .number{color:var(--bn)}.agro-kpi strong{color:var(--bn)}
+.point-active{background:#f1f7f3;border-color:#cfe0d5}.point-active strong{color:var(--bn)}
+.source-badge{background:#eef4f0;border-color:#d4e2d9;color:#4b6557}
+a{color:#0f5fb3}
+footer{border-top:3px solid var(--bg1)}
+.brand-footer{display:flex;align-items:center;gap:14px;margin-bottom:10px}.brand-footer img{height:44px;width:auto}
+/* Weekly board (newspaper style) */
+.board-scroll{overflow:auto;max-width:100%}
+table.board{min-width:760px;border-collapse:separate;border-spacing:0 6px}
+table.board th{background:transparent;color:#5d6f85;font-size:11px;letter-spacing:.06em;text-transform:uppercase;border:0;text-align:left;padding:4px 10px;position:static}
+table.board td{text-align:left;white-space:normal;border:0;background:#fff;padding:10px 10px;vertical-align:middle;font-size:13px;border-top:1px solid #e3ebe6;border-bottom:1px solid #e3ebe6}
+table.board tr.board-row td:first-child{border-left:1px solid #e3ebe6;border-radius:12px 0 0 12px}table.board tr.board-row td:last-child{border-right:1px solid #e3ebe6;border-radius:0 12px 12px 0}
+table.board tr.board-row{cursor:pointer}table.board tr.board-row:hover td{background:#f5faf7}table.board tr.board-row.open td{background:#eef6f1}
+table.board td small{display:block;color:#6d7d8f;font-size:11px;font-weight:500;margin-top:2px}
+table.board .tmax{font-size:20px;color:var(--bred);font-weight:800;letter-spacing:-.02em}table.board .tmin{display:block;color:var(--bsky);font-weight:700;font-size:13px}
+table.board .rain-big{font-size:22px;font-weight:800;letter-spacing:-.03em;color:var(--bn)}
+table.board .board-icon svg{width:44px;height:44px;display:block}table.board .board-icon small{margin-top:0}
+table.board tr.board-detail td{background:#f7faf8;border-radius:0 0 12px 12px;border-left:1px solid #e3ebe6;border-right:1px solid #e3ebe6}
+.board-hours{display:flex;flex-wrap:wrap;gap:8px}.board-hours span{font-size:12px;background:#fff;border:1px solid #dde6e0;border-radius:8px;padding:5px 8px;color:#2f4257}.board-hours b{display:block;color:var(--bn)}
+table.board.weeks td{vertical-align:top}table.board.weeks .rain-big{font-size:19px}
+tr.week-gefs td,tr.week-ecmwf td{background:#fbfcfb}
+/* AI bulletin */
+.bulletin{border-left:5px solid var(--bg1);background:#fff}
+.bulletin p.bulletin-text{font-size:16px;line-height:1.65;color:#1d2f4b;margin:6px 0 10px}
+.bulletin .bulletin-meta{font-size:11px;color:#6a7a8c}
+@media(max-width:760px){.brand-logo{display:none}.brand-logo-icon{display:block}.brand{gap:12px}table.board{min-width:640px}table.board .rain-big{font-size:19px}table.board .tmax{font-size:18px}}
+/* v4 — stations, model comparison, satellite control, bulletin origin */
+.station-tabs{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+.station-tabs button{border:1px solid #cbd8d0;background:#f7faf8;color:var(--bn);border-radius:12px;padding:8px 12px;font:inherit;font-weight:700;cursor:pointer;text-align:left}
+.station-tabs button small{display:block;font-weight:500;color:#6a7a8c;font-size:11px}
+.station-tabs button.active{background:var(--bn);color:#fff;border-color:var(--bn)}.station-tabs button.active small{color:#d7e0f0}
+.station-head h4{margin:6px 0 2px;color:var(--bn);font-size:18px}
+.subpanel{background:#fbfcfb;border:1px solid #e3ebe6;border-radius:14px;padding:12px 14px;margin:10px 0}
+.subpanel h5{margin:0 0 8px;color:var(--bn);font-size:14px;letter-spacing:.01em}
+.subpanel .panel-head{margin-bottom:6px}.subpanel label{font-size:12px;color:#5b6b7e}.subpanel select{font:inherit;border:1px solid #cbd8d0;border-radius:8px;padding:4px 6px;margin-left:6px}
+table.board.station-matrix td,table.board.recent td,table.board.corrected td{font-size:13px}
+table.board.station-matrix td strong{font-size:15px}
+table.board .agree{display:inline-block;margin-top:3px;font-size:11px;border-radius:999px;padding:2px 7px;background:#eef2f6;color:#4b5f76;border:1px solid #d6dee8}
+table.board .agree.ok{background:#e4f5ea;color:#1f5a3c;border-color:#bfe1cb}table.board .agree.warn{background:#fff3df;color:#8a5a12;border-color:#f0d9ad}table.board .agree.bad{background:#fde8ea;color:#9a1b26;border-color:#f3c2c7}
+.corr{display:inline-block;margin-top:2px;font-size:12px;font-weight:700;color:var(--bg1-dark);background:#e6f4ea;border-radius:8px;padding:1px 6px}
+.station-mini{padding:4px 0}.station-mini-head{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px}.station-mini-head small{color:#6a7a8c}
+.farm-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.farm-cards .farm-card{background:#fff;border:1px solid #d9e4dd;border-radius:14px;padding:12px 14px}.farm-cards .farm-card small{display:block;color:#5b6b7e;font-size:11px;letter-spacing:.04em;text-transform:uppercase}.farm-cards .farm-card strong{display:block;font-size:26px;line-height:1.1;margin:4px 0 2px;letter-spacing:-.02em}.farm-cards .farm-card span{font-size:12px;color:#4b5f76}
+.farm-cards .farm-card strong.tmax{color:var(--bred)}.farm-cards .farm-card strong.tmin{color:var(--bsky)}
+.goes-control{background:#eef4fb;border-color:#cfdcec}.goes-control input[type=range]{flex:1;min-width:160px}
+#models-compare-table td,#models-compare-table th{text-align:center;font-size:13px}#models-compare-table td:first-child{text-align:left}#models-compare-table tr.spread-row td{background:#f1f7f3;font-weight:600}
+.source-badge.origin-ai{background:#e8eefc;border-color:#c7d4f5;color:#23407a}.source-badge.origin-rules{background:#eef4f0}
+.bulletin-text{font-size:17px;line-height:1.65;color:#1d2f4b;margin:6px 0 10px}
+.weekly-models{display:block;color:#5b6b7e;font-size:11px;margin-top:2px}
+@media(max-width:760px){.farm-cards .farm-card strong{font-size:22px}}
+/* v4 — grid children may shrink below their content; inner .scroll/.board-scroll containers take the overflow */
+.grid2>*,.subpanel,.plot,.station-mini{min-width:0}
+@media(max-width:760px){.brand-text .eyebrow{font-size:9px;letter-spacing:.08em}.brand-text p{font-size:13px}}

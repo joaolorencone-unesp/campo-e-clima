@@ -20,6 +20,29 @@ def validate(name,value):
     if name=='explanation.json' and value.get('effective_provider')!='none':raise ValueError('IA externa não autorizada')
     return value
 
+def export_stations(root):
+    """Station verification reports (public/stations/) are optional; absence keeps the previous copies."""
+    try:
+        response=requests.get(root+'stations/index.json',timeout=20)
+        if response.status_code==404:return {'state':'absent'}
+        response.raise_for_status();index=response.json()
+        if not isinstance(index.get('stations'),list):raise ValueError('Índice de estações inválido')
+        files={}
+        for entry in index['stations']:
+            name=str(entry.get('file',''))
+            if not re.fullmatch(r'[a-z0-9_\-]+\.json',name):raise ValueError('Nome de relatório inválido')
+            body=requests.get(root+'stations/'+name,timeout=30);body.raise_for_status()
+            report=body.json()
+            if report.get('schema_version')!=1 or 'verification' not in report:raise ValueError('Relatório de estação incompatível')
+            files[name]=json.dumps(report,ensure_ascii=False,separators=(',',':')).encode('utf-8')
+        files['index.json']=json.dumps({**index,'archive_commit':root.split('/')[-3]},ensure_ascii=False,separators=(',',':')).encode('utf-8')
+        for name,body in files.items():
+            dest=Path('site/data/stations')/name;dest.parent.mkdir(parents=True,exist_ok=True);atomic(dest,body)
+        return {'state':'ok','files':sorted(files)}
+    except (requests.RequestException,ValueError,KeyError,TypeError) as exc:
+        print('Relatórios de estações indisponíveis:',type(exc).__name__)
+        return {'state':'previous_preserved','error':type(exc).__name__}
+
 def main():
     try:
         ref=requests.get('https://api.github.com/repos/joaolorencone-unesp/campo-e-clima/git/ref/heads/weather-archive',timeout=20)
@@ -36,7 +59,8 @@ def main():
         for name,body in pending.items():
             dest=Path('site/data')/name;dest.parent.mkdir(parents=True,exist_ok=True)
             atomic(dest,body)
-        return {'state':'ok','archive_commit':commit}
+        stations=export_stations(root)
+        return {'state':'ok','archive_commit':commit,'stations':stations}
     except (requests.RequestException,ValueError,KeyError,TypeError) as exc:
         print('Arquivo científico indisponível:',type(exc).__name__,'; relatórios anteriores mantêm suas datas')
         return {'state':'previous_preserved','error':type(exc).__name__}

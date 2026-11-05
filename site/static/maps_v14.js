@@ -8,6 +8,12 @@
  const GRID_OFFSETS=[-0.4,0,0.4],POINT_COUNT=9,HOURS=48;
  const VARIABLES=['cloud_cover','cloud_cover_low','cloud_cover_mid','cloud_cover_high','precipitation','precipitation_probability','temperature_2m','relative_humidity_2m','wind_speed_10m','wind_gusts_10m','wind_direction_10m','cape'];
  const IMAGE_LAYERS=new Set(['MODIS_Terra_CorrectedReflectance_TrueColor','VIIRS_NOAA20_CorrectedReflectance_TrueColor']);
+ // v4: geostationary and precipitation layers with a sub-daily TIME dimension (NASA GIBS, no key).
+ const TIME_LAYERS={'GOES-East_ABI_GeoColor':{step:10,latency:40,matrix:'GoogleMapsCompatible_Level7',maxNative:7,label:'GOES-East GeoColor',ext:'png'},
+  'GOES-East_ABI_Band13_Clean_Infrared':{step:10,latency:40,matrix:'GoogleMapsCompatible_Level6',maxNative:6,label:'GOES-East infravermelho (banda 13)',ext:'png'},
+  'GOES-East_ABI_Air_Mass':{step:10,latency:40,matrix:'GoogleMapsCompatible_Level6',maxNative:6,label:'GOES-East massas de ar',ext:'png'},
+  'IMERG_Precipitation_Rate_30min':{step:30,latency:240,matrix:'GoogleMapsCompatible_Level6',maxNative:6,label:'IMERG taxa de chuva (30 min)',ext:'png'}};
+ const GOES_FRAMES=18;let goesFrames=[],goesIndex=GOES_FRAMES-1,goesTimer=null,goesLayers=new Map(),goesBackoff=0;
  let map=null,selectedMarker=null,weatherLayer=null,imageLayer=null,forecast=null,pointKey=null,lastAt=0;
  let hourIndex=0,requestId=0,playing=null,imageLoaded=0,imageErrors=0;
  let radarTile=null,radarFrames=[],radarHost="",radarIndex=0,radarTimer=null,radarFetchedAt=0,radarRequest=null;
@@ -135,7 +141,7 @@
     radarStatus('Radar indisponível nesta consulta ('+(err.name==='AbortError'?'tempo limite':String(err.message).slice(0,65))+'). Consulte os visualizadores oficiais do INMET/INPE.','bad');}
   }finally{clearTimeout(timeout);if(radarRequest===abort)radarRequest=null;}
  }
- function setRadarMode(){clearRadarCache();productTitle();updateProductLegend();
+ function setRadarMode(){clearRadarCache();clearTimeLayers();if(el('goes-control'))el('goes-control').hidden=radarActive()||!timeLayerActive();productTitle();updateProductLegend();
   if(radarActive()){
    pause();weatherLayer?.clearLayers();
    for(const id of ['map-hour','map-previous','map-next','map-play','map-refresh'])if(el(id))el(id).disabled=true;
@@ -174,10 +180,41 @@
  }
  function reposition(){if(!map)return;const p=point();map.setView([p.latitude,p.longitude],8);selectedMarker.setLatLng([p.latitude,p.longitude]);selectedMarker.setPopupContent('📍 '+escape(p.name||'Ponto')+'<br>'+p.latitude.toFixed(5)+', '+p.longitude.toFixed(5));setTimeout(()=>map.invalidateSize(),80);}
  function imageURL(layer,date){return `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${layer}/default/${date}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`;}
+ function timeURL(layer,iso){const c=TIME_LAYERS[layer];return `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${layer}/default/${iso}/${c.matrix}/{z}/{y}/{x}.${c.ext}`;}
+ function timeFrames(layer,now=Date.now(),count=GOES_FRAMES){const c=TIME_LAYERS[layer];if(!c)return [];const stepMs=c.step*60000;const latest=Math.floor((now-(c.latency+goesBackoff*c.step)*60000)/stepMs)*stepMs;return Array.from({length:count},(_,i)=>new Date(latest-(count-1-i)*stepMs).toISOString().slice(0,19)+'Z');}
+ function timeLayerActive(){return Boolean(TIME_LAYERS[el('map-satellite')?.value]);}
+ function goesLabel(iso){const d=new Date(iso);let local;try{local=new Intl.DateTimeFormat('pt-BR',{dateStyle:'short',timeStyle:'short',timeZone:tz()}).format(d);}catch(_){local=iso;}const age=Math.round((Date.now()-d.getTime())/60000);return `${local} (local) · ${iso.slice(11,16)} UTC · há ${age} min`;}
+ function clearTimeLayers(){for(const l of goesLayers.values())if(map?.hasLayer(l))map.removeLayer(l);goesLayers.clear();if(goesTimer){clearInterval(goesTimer);goesTimer=null;}const b=el('goes-play');if(b)b.textContent='▶ Animar nuvens';}
+ function showTimeFrame(index){
+  if(!map||radarActive()||!timeLayerActive()||!goesFrames.length)return;
+  goesIndex=clamp(index,0,goesFrames.length-1);const layer=el('map-satellite').value,iso=goesFrames[goesIndex],cfg=TIME_LAYERS[layer];
+  el('goes-frame').value=String(goesIndex);el('goes-time').textContent=goesLabel(iso);
+  let tile=goesLayers.get(iso);
+  if(!tile){tile=L.tileLayer(timeURL(layer,iso),{minZoom:1,maxNativeZoom:cfg.maxNative,maxZoom:18,opacity:0,attribution:'NASA GIBS / ESDIS ('+cfg.label+')'});let ok=0,bad=0;
+   tile.on('tileload',()=>{ok++;if(ok===1&&goesFrames[goesIndex]===iso)setStatus(`✓ ${cfg.label} • ${goesLabel(iso)}. Nuvens OBSERVADAS pelo satélite, não previsão. Fonte: NASA GIBS.`,'good');});
+   tile.on('tileerror',()=>{bad++;if(bad>=4&&!ok&&goesIndex===goesFrames.length-1&&goesBackoff<6){goesBackoff++;goesFrames=timeFrames(layer);map.removeLayer(tile);goesLayers.delete(iso);setStatus('Imagem mais recente ainda não publicada; recuando '+cfg.step*goesBackoff+' min.','muted');showTimeFrame(goesFrames.length-1);}
+    else if(bad>=6&&!ok)setStatus(`${cfg.label}: blocos indisponíveis para ${iso.slice(11,16)} UTC (latência ou cobertura). Experimente outro instante.`,'error');});
+   tile.addTo(map);goesLayers.set(iso,tile);}
+  for(const [k,l] of goesLayers)l.setOpacity(k===iso?Number(el('map-opacity').value):0);
+  if(weatherLayer)weatherLayer.bringToFront();if(selectedMarker)selectedMarker.bringToFront();
+  if(goesLayers.size>6){for(const [k,l] of goesLayers){if(k!==iso&&Math.abs(goesFrames.indexOf(k)-goesIndex)>2){map.removeLayer(l);goesLayers.delete(k);}}}
+ }
+ function toggleGoesPlay(){if(goesTimer){clearInterval(goesTimer);goesTimer=null;el('goes-play').textContent='▶ Animar nuvens';return;}
+  if(!goesFrames.length||radarActive())return;el('goes-play').textContent='⏸ Pausar';if(goesIndex>=goesFrames.length-1)goesIndex=-1;
+  goesTimer=setInterval(()=>{if(!el('maps').classList.contains('active')||!timeLayerActive()){toggleGoesPlay();return;}showTimeFrame(goesIndex>=goesFrames.length-1?0:goesIndex+1);},1100);}
+ function drawTimeLayer(){
+  const layer=el('map-satellite').value;clearTimeLayers();if(!goesFrames.length){goesBackoff=0;goesFrames=timeFrames(layer);}
+  el('goes-frame').max=String(goesFrames.length-1);el('goes-control').hidden=false;
+  setStatus('Consultando NASA GIBS: '+TIME_LAYERS[layer].label+' (últimas '+Math.round(goesFrames.length*TIME_LAYERS[layer].step/60)+' h)…');
+  showTimeFrame(goesFrames.length-1);
+ }
  function drawImage(){
-  if(!map||radarActive())return;
-  if(imageLayer){map.removeLayer(imageLayer);imageLayer=null;}
   const layer=el('map-satellite').value,date=el('map-image-date').value;
+  clearTimeLayers();if(el('goes-control'))el('goes-control').hidden=!TIME_LAYERS[layer];
+  if(TIME_LAYERS[layer]){goesBackoff=0;goesFrames=timeFrames(layer);goesIndex=goesFrames.length-1;el('goes-frame').max=String(goesIndex);el('goes-frame').value=String(goesIndex);el('goes-time').textContent=goesLabel(goesFrames[goesIndex]);}
+  if(!map||radarActive()){if(TIME_LAYERS[layer]&&!map)setStatus('A biblioteca de mapa não carregou (rede ou bloqueio do CDN); a animação de satélite precisa do mapa. Consulte NASA Worldview.','error');return;}
+  if(imageLayer){map.removeLayer(imageLayer);imageLayer=null;}
+  if(TIME_LAYERS[layer]){drawTimeLayer();return;}
   if(layer==='none'){setStatus(forecast?`Previsão Open-Meteo em grade: ${forecast.points.length} locais. Imagem NASA desativada.`:'Selecione uma camada de satélite ou carregue a previsão.');return;}
   if(!IMAGE_LAYERS.has(layer)||!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(date)||date>todayUTC()){
    setStatus('Camada NASA ou data inválida; nenhuma imagem será exibida.','error');return;
@@ -281,7 +318,11 @@
   el('map-variable').addEventListener('change',paint);
   el('map-satellite').addEventListener('change',drawImage);
   el('map-image-date').addEventListener('change',drawImage);
-  el('map-opacity').addEventListener('change',()=>{if(imageLayer)imageLayer.setOpacity(Number(el('map-opacity').value))});
+  el('map-opacity').addEventListener('change',()=>{if(imageLayer)imageLayer.setOpacity(Number(el('map-opacity').value));if(timeLayerActive())showTimeFrame(goesIndex);});
+  el('goes-frame')?.addEventListener('input',()=>{if(goesTimer)toggleGoesPlay();showTimeFrame(Number(el('goes-frame').value));});
+  el('goes-prev')?.addEventListener('click',()=>{if(goesTimer)toggleGoesPlay();showTimeFrame(goesIndex-1);});
+  el('goes-next')?.addEventListener('click',()=>{if(goesTimer)toggleGoesPlay();showTimeFrame(goesIndex+1);});
+  el('goes-play')?.addEventListener('click',toggleGoesPlay);
   el('map-hour').addEventListener('input',()=>{hourIndex=Number(el('map-hour').value);pause();paint()});
   el('map-previous').addEventListener('click',()=>{if(!forecast)return;hourIndex=clamp(hourIndex-1,0,forecast.times.length-1);pause();paint()});
   el('map-next').addEventListener('click',()=>{if(!forecast)return;hourIndex=clamp(hourIndex+1,0,forecast.times.length-1);pause();paint()});
@@ -296,9 +337,9 @@
   el('radar-frame').addEventListener('input',()=>{stopRadar();requestRadarFrame(Number(el('radar-frame').value));});
   el('tabs').addEventListener('click',e=>{const tab=e.target.closest('button[data-tab]')?.dataset.tab;if(tab==='maps')setTimeout(display,90);else{pause();stopRadar();if(tab==='wind')setTimeout(syncWindCompass,110)}});
   window.addEventListener('campo:location-changed',onPointChange);
-  window.addEventListener('visibilitychange',()=>{if(document.hidden){pause();stopRadar();}});
+  window.addEventListener('visibilitychange',()=>{if(document.hidden){pause();stopRadar();if(goesTimer)toggleGoesPlay();}});
   // When new weather data is received, allow a fresh wind compass without reloading.
-  window.CampoMaps={open:display,readCompass:syncWindCompass,_test:{coords,forecastGrid,checkForecast,transit,cardinal,mapColor,parseRadarManifest,numericLegend,radarLegend,frameLabel}};
+  window.CampoMaps={open:display,readCompass:syncWindCompass,_test:{coords,forecastGrid,checkForecast,transit,cardinal,mapColor,parseRadarManifest,numericLegend,radarLegend,frameLabel,timeFrames,timeURL,TIME_LAYERS}};
  }
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bind,{once:true});else bind();
 })();

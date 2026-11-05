@@ -1,4 +1,12 @@
-# Campo e Clima v3 — plataforma agrometeorológica aberta (05/11/2026)
+# Campo e Clima v4 — Boletim Meteorológico com identidade oficial, estações físicas e satélite (05/11/2026)
+
+Versão 4 sobre a v3 integrada em `main` (`c881d31`), na branch `claude/campo-clima-platform-qvl7e8` (PR em rascunho). Identidade visual com o logo oficial do projeto; modo simples em formato de jornal (quadro semanal com números grandes e tabela de próximas semanas); boletim do dia por regras com reescrita opcional por IA gratuita validada; verificação e correção de viés nas estações físicas INMET S735 (Naviraí), INMET A949 (Diamantino) e Embrapa Naviraí/IFMS, com previsões nas coordenadas das estações; satélite GOES-East e IMERG (NASA GIBS) com animação; comparação de modelos determinísticos lado a lado.
+
+Documentos v4: [Design](docs/DESIGN_V4.md) · [Estações e calibração](docs/ESTACOES_E_CALIBRACAO_V4.md) · [Fontes v4](docs/FONTES_V4.md) · [Dicionário de dados](docs/DATA_DICTIONARY.md) · [Changelog](docs/CHANGELOG.md). Os resultados reais da verificação por estação são gerados pelos workflows com rede (`science.yml` diário ou `station-calibration.yml` manual) e aparecem na aba Observações.
+
+---
+
+# Campo e Clima v3 (versão anterior) — plataforma agrometeorológica aberta (05/11/2026)
 
 Branch de desenvolvimento `claude/campo-clima-platform-qvl7e8` sobre `main` em `98f48c4`. Integração em `main` continua sendo uma etapa controlada (PR em rascunho).
 

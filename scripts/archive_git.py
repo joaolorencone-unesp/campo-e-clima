@@ -78,7 +78,7 @@ def publish(captures,root,*,push=False,train=False):
             out.append({'state':'source_unavailable','location':doc['location']['id'],
                         'requests':[{'source_url':r['source_url'],'status':r.get('http_status'),'error':r.get('error')} for r in doc['requests']]})
             continue
-        historical=any(r.get('product') in ('previous_runs','single_run','historical_forecast','reanalysis','station_import') for r in doc['requests'])
+        historical=any(r.get('product') in ('previous_runs','single_run','historical_forecast','reanalysis','station_import','station_previous_runs') for r in doc['requests'])
         try:out.append(archive_capture(file.parent,root,force_slot='import' if historical else None))
         except (ValueError,OSError) as exc:out.append({'state':'failed','location':doc['location']['id'],'reason':str(exc)})
     changed=any(x['state']=='archived' for x in out)
@@ -102,6 +102,15 @@ def publish(captures,root,*,push=False,train=False):
             # RAW remains publishable, prior derived reports remain byte-for-byte intact.
             report_error=type(exc).__name__+': '+str(exc)[:180]
             out.append({'state':'failed','reason':'Relatório derivado falhou; RAW preservado','error':report_error})
+    # Station verification reports (computed by scripts.station_calibration) are published as-is.
+    stations_src=Path(os.environ.get('STATION_REPORTS_DIR','runtime/stations_public'))
+    if stations_src.is_dir() and (stations_src/'index.json').exists():
+        from scripts.science.common import atomic
+        import re as _re
+        names=[p for p in stations_src.glob('*.json') if _re.fullmatch(r'[a-z0-9_\-]+\.json',p.name)]
+        for p in names:
+            atomic(root/'public'/'stations'/p.name,p.read_bytes())
+        out.append({'state':'stations_published','files':sorted(p.name for p in names)})
     storage=inventory(root);warn(storage)
     failures=[x for x in out if x['state'] in ('failed','source_unavailable')]
     update_status=changed or reports_refreshed or not previous or previous.get('storage',{}).get('severity')!=storage['severity'] or previous.get('failures')!=failures

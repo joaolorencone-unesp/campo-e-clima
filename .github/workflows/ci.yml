@@ -38,3 +38,55 @@ jobs:
         run: |
           for test in tests/frontend_smoke.cjs tests/test_*.cjs; do node "$test"; done
           for source in site/static/*.js; do node --check "$source"; done
+  # Preview of the physical-station verification with real network access, only when the
+  # station data or code changed in this pull request. Non-blocking: it reads a free API and
+  # publishes nothing; its log and artifact let reviewers see the real out-of-sample numbers
+  # before the daily scientific workflow runs on main.
+  stations-preview:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Did station data or code change?
+        id: changed
+        run: |
+          if git diff --name-only "origin/${{ github.base_ref }}...HEAD" | grep -Eq '^(data/stations/|scripts/science/station_|scripts/station_calibration\.py)'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"; else echo "run=false" >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        if: steps.changed.outputs.run == 'true'
+        with:
+          python-version: '3.11'
+      - if: steps.changed.outputs.run == 'true'
+        run: pip install -r requirements-science.txt
+      - name: Station verification (free Previous Runs API at station coordinates)
+        if: steps.changed.outputs.run == 'true'
+        run: python -m scripts.station_calibration --fetch --output-dir runtime/stations_public
+      - name: Summary in the log
+        if: steps.changed.outputs.run == 'true' && always()
+        run: |
+          python - <<'PY'
+          import json,pathlib
+          index=json.loads(pathlib.Path('runtime/stations_public/index.json').read_text(encoding='utf-8'))
+          for s in index['stations']:
+              print('\n=== STATION',s['id'],s['state'],'models',s['models'])
+              print('headline',json.dumps(s['headline'],ensure_ascii=False))
+              print('recommendations',s['recommendations'],'groups',s['groups_evaluated'])
+              r=json.loads(pathlib.Path('runtime/stations_public',s['file']).read_text(encoding='utf-8'))
+              for m,st in r['models'].items():
+                  if st.get('errors'):print('model',m,st['state'],'errors',st['errors'][:2])
+              for v in r['verification']:
+                  if v.get('status')!='evaluated':continue
+                  rec=v.get('recommended')
+                  print(f"{v['model']:28s} D{v['lead_days']} {v['variable']:20s} n={v['raw_all_pairs']['n']:5d} MAE={v['raw_all_pairs']['mae']:7.2f} bias={v['raw_all_pairs']['bias']:7.2f}"+(f" -> {rec['method']}: test MAE raw {rec['evidence']['mae_raw']:.2f} -> {rec['evidence']['mae_corrected']:.2f} skill={rec['evidence']['skill_mae']:.2f} CI={rec['evidence']['delta_mae_ci95']}" if rec else ''))
+          PY
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: steps.changed.outputs.run == 'true' && always()
+        with:
+          name: station-verification-preview-${{ github.run_id }}
+          path: runtime/stations_public
+          retention-days: 14

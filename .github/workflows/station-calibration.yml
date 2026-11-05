@@ -1,0 +1,52 @@
+name: Station verification preview (manual)
+# Runs the physical-station verification on any branch with network access and shows the
+# summary in the job log and as an artifact. It never pushes, deploys or archives anything:
+# production publication happens only through the daily scientific workflow on main.
+on:
+  workflow_dispatch:
+    inputs:
+      models:
+        description: 'Comma-separated Open-Meteo deterministic model ids (empty = default list)'
+        required: false
+        default: ''
+permissions:
+  contents: read
+jobs:
+  stations:
+    if: github.repository == 'joaolorencone-unesp/campo-e-clima'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements-science.txt
+      - name: Offline station tests
+        run: python -m pytest -q tests/test_station_calibration_v40.py
+      - name: Station verification (Previous Runs API at station coordinates)
+        env:
+          STATION_MODELS: ${{ inputs.models }}
+        run: python -m scripts.station_calibration --fetch --output-dir runtime/stations_public
+      - name: Summary in the log
+        if: always()
+        run: |
+          python - <<'PY'
+          import json,pathlib
+          index=json.loads(pathlib.Path('runtime/stations_public/index.json').read_text(encoding='utf-8'))
+          for s in index['stations']:
+              print('\n=== STATION',s['id'],s['state'],'models',s['models'])
+              print('headline',json.dumps(s['headline'],ensure_ascii=False))
+              print('recommendations',s['recommendations'],'groups',s['groups_evaluated'])
+              r=json.loads(pathlib.Path('runtime/stations_public',s['file']).read_text(encoding='utf-8'))
+              for v in r['verification']:
+                  if v.get('status')!='evaluated':continue
+                  rec=v.get('recommended')
+                  print(f"{v['model']:28s} D{v['lead_days']} {v['variable']:20s} n={v['raw_all_pairs']['n']:5d} MAE={v['raw_all_pairs']['mae']:7.2f} bias={v['raw_all_pairs']['bias']:7.2f}"+(f" -> {rec['method']}: test MAE raw {rec['evidence']['mae_raw']:.2f} -> {rec['evidence']['mae_corrected']:.2f} skill={rec['evidence']['skill_mae']:.2f} CI={rec['evidence']['delta_mae_ci95']}" if rec else ''))
+          PY
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: station-verification-${{ github.run_id }}
+          path: runtime/stations_public
+          retention-days: 14

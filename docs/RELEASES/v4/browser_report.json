@@ -1,0 +1,28 @@
+{
+  "base": "http://127.0.0.1:8777",
+  "checked_at_utc": "2026-11-05T07:05:22.707Z",
+  "cases": [
+    {
+      "mobile": false,
+      "weekly_rows": 7,
+      "weeks_rows": 2,
+      "bulletin": "Chuva determinística prevista nas próximas 24 h: 3,4 mm. Temperatura nas próximas 24 h entre 22 e 30 °C. Rajada máxima p",
+      "station_card": true,
+      "station_tabs": 3,
+      "compare_rows": 6,
+      "js_errors": [],
+      "horizontal_overflow": false
+    },
+    {
+      "mobile": true,
+      "weekly_rows": 7,
+      "weeks_rows": 2,
+      "bulletin": "Chuva determinística prevista nas próximas 24 h: 3,4 mm. Temperatura nas próximas 24 h entre 22 e 30 °C. Rajada máxima p",
+      "station_card": true,
+      "station_tabs": 3,
+      "compare_rows": 6,
+      "js_errors": [],
+      "horizontal_overflow": false
+    }
+  ]
+}

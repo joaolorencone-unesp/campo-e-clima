@@ -10,7 +10,7 @@
   {id:'operations',label:'Operações agrícolas',tabs:['agro','spray','wind']},
   {id:'maps',label:'Mapas e monitoramento',tabs:['maps','observations']},
   {id:'science',label:'Ciência e dados',tabs:['precision','verification','history-nasa','machines']}];
- const SIMPLE_TABS=new Set(['overview','agro','maps','observations','rain']);
+ const SIMPLE_TABS=new Set(['overview','rain','agro','observations']); // v4: o mapa de amostras em grade sai do modo simples
  const STORAGE_KEY='campo-mode';
  function groupFor(tab){return GROUPS.find(g=>g.tabs.includes(tab))?.id||'science';}
  function readMode(storage){try{const v=storage?.getItem?.(STORAGE_KEY);return v==='advanced'?'advanced':v==='simple'?'simple':null;}catch(_){return null;}}
