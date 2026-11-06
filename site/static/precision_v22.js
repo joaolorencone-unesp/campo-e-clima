@@ -31,8 +31,26 @@
   return (report?.results||[]).filter(r=>r.location_id===loc&&r.variable===varid&&(!start||r.start_utc.slice(0,10)>=start)&&(!end||r.end_utc.slice(0,10)<=end));
  }
  function messagePlot(id,text){if(window.Plotly)try{Plotly.purge($(id));}catch(_){}$(id).textContent=text;}
+ function renderRainWindows(selected){
+  const status=$('precision-rain-window-status'),body=$('precision-rain-window-body');
+  const rain=report?.operational_rain;
+  const duration=Number($('precision-rain-window').value);
+  const rows=rain?.results?.filter(r=>r.location_id===selected&&r.duration_hours===duration)||[];
+  const loc=report?.locations?.find(r=>r.id===selected);
+  const day=stamp=>new Date(stamp).toLocaleDateString('pt-BR',{timeZone:loc.timezone});
+  const reason=selected==='unknown'?unknown:!rain?'Este relatório ainda não inclui a verificação por janela.':
+   rows.length?'Amostras por estação, modelo e antecedência. As métricas não alteram a previsão principal.':'Ainda não há janelas completas pareadas para esta localidade e duração.';
+  const fileProblems=(rain?.station_files_unavailable||[]).filter(id=>({navirai:'INMET:S735',diamantino:'INMET:A949'})[selected]===id);
+  status.textContent=reason+(fileProblems.length?` Série histórica indisponível: ${fileProblems.join(', ')}.`:'');
+  body.innerHTML=rows.length?rows.map(r=>{
+   const model=r.model==='best_match_unspecified'?'Open-Meteo (seleção automática)':r.model;
+   const lead=r.lead_max_hours===24?'Até 24 h':`>${r.lead_max_hours-24} a ${r.lead_max_hours} h`;
+   return `<tr><td>${esc(r.station_id)} · ${fmt(r.distance_km)} km<br><small>${esc(model)}</small></td><td>${esc(lead)}</td><td>${fmt(r.n)}<br><small>${esc(day(r.start_utc))} a ${esc(day(Date.parse(r.end_utc)-1))}</small></td><td>${fmt(r.mae_mm)} mm</td><td>${fmt(r.bias_mm)} mm</td><td>${fmt(r.hits)}</td><td>${fmt(r.misses)}</td><td>${fmt(r.false_alarms)}</td></tr>`;
+  }).join(''):`<tr><td colspan="8">${esc(reason)}</td></tr>`;
+ }
  function render(){
   const selected=$('precision-location').value;
+  renderRainWindows(selected);
   if(selected==='unknown'){
    $('precision-status').textContent=unknown;$('precision-provenance').textContent='Nenhum resultado de Naviraí ou Diamantino foi aplicado às coordenadas selecionadas.';
    $('precision-kpis').innerHTML='';$('precision-table-body').innerHTML='<tr><td colspan="8">'+unknown+'</td></tr>';
@@ -71,11 +89,12 @@
   pending=(async()=>{try{const response=await fetch('data/verification.json',{cache:'no-cache'});if(!response.ok)throw Error('HTTP '+response.status);const value=await response.json();if(value.schema_version!==1||!Array.isArray(value.locations)||!Array.isArray(value.results))throw Error('Relatório incompatível');report=value;
    try{const r=await fetch('data/calibration.json',{cache:'no-cache'});if(r.ok)experiments=await r.json();}catch(_){}
    render();}
-   catch(e){$('precision-status').textContent='Relatório científico indisponível. '+empty;$('precision-provenance').textContent='A indisponibilidade do arquivo não informa a precisão dos modelos.';}finally{pending=null;}})();return pending;
+   catch(e){$('precision-status').textContent='Relatório científico indisponível. '+empty;$('precision-provenance').textContent='A indisponibilidade do arquivo não informa a precisão dos modelos.';$('precision-rain-window-status').textContent='Relatório de janelas indisponível.';}finally{pending=null;}})();return pending;
  }
  function init(){
   if(!$('precision-status'))return;
   ['location','variable','start','end','model','threshold'].forEach(k=>$('precision-'+k).addEventListener('change',render));
+  $('precision-rain-window').addEventListener('change',()=>renderRainWindows($('precision-location').value));
   $('tabs').addEventListener('click',e=>{if(e.target.closest('button[data-tab="precision"]'))void load();});
   window.addEventListener('campo:location-changed',e=>{$('precision-location').value=identify(e.detail);render();});
   if(window.CampoLocation?.getPoint){$('precision-location').value=identify(window.CampoLocation.getPoint());render();}

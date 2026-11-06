@@ -269,7 +269,7 @@ function summarizeEnsembles(results){
   models[name]={state:Object.keys(c.r).length?'ok':'no_valid_daily_rain_members',precipitation_members:c.member_rain,precipitation_members_declared:c.member_rain_declared,
    precipitation_members_valid_by_day:c.member_rain_by_day,
    gust_members:c.member_gust,gust_members_declared:c.member_gust_declared,
-   gust_members_valid_by_day:c.member_gust_by_day,grid_lat:payload.latitude,grid_lon:payload.longitude,code:MODELS[name]};
+   gust_members_valid_by_day:c.member_gust_by_day,grid_lat:payload.latitude,grid_lon:payload.longitude,code:MODELS[name],collected_at_utc:results[name].collectedAt};
   for(const [day,values] of Object.entries(c.r))if(values.length)comparison.push({model:name,date:day,members:values.length,mean_mm:values.reduce((a,b)=>a+b,0)/values.length,p_gt_0_1_mm:values.filter(v=>v>0.1).length/values.length,p_gt_1_mm:values.filter(v=>v>1).length/values.length,p_gt_5_mm:values.filter(v=>v>5).length/values.length});
  }
  const rainD=mix(r,mixRain),gustD=mix(g,mixGust);
@@ -329,7 +329,7 @@ async function requestEnsembles(point,token,onProgress=()=>{}){
      if(!computed)throw Error('Consulta reduzida sem chuva válida');
     }
     if(token!==generation)return;
-    results[name]={payload:data,computed};
+    results[name]={payload:data,computed,collectedAt:new Date().toISOString()};
    }catch(e){
     if(token!==generation)return;
     if(e.status===429)cancelledByLimit=true;

@@ -11,6 +11,7 @@ from scripts.science.ingest import normalize, ingest_manifest, quality, export_p
 from scripts.science.archive import archive_capture, rebuild, verify_manifest
 from scripts.science.metrics import deterministic, brier_score, brier_skill_score, crps, reliability, events, monotone_probabilities
 from scripts.science.evaluation import paired_rows, evaluate
+from scripts.science.operational_rain import report as rain_report
 from scripts.science.calibration import chronological_split
 from scripts.science.explanations import explain, validate_selection
 
@@ -105,6 +106,49 @@ def test_conflicting_observation_versions_excluded(tmp_path):
     cap,_,_=fixture_capture(tmp_path);observation(cap,rain=2);observation(cap,rain=9)
     db=tmp_path/'db';ingest_manifest(db,cap.root,cap.manifest)
     pairs,flags=paired_rows(db);assert not pairs;assert flags['conflicting_reference_versions']
+
+def test_operational_rain_uses_whole_windows_and_only_prior_captures(tmp_path):
+    db=tmp_path/'science.sqlite'
+    loc=location('navirai')
+    start=instant('2026-01-03T04:00Z')  # Midnight at the point.
+    hour=dt.timedelta(hours=1)
+    stamps=[iso(start+i*hour) for i in range(25)]
+
+    def forecast(name, available, values, product='operational'):
+        cap=Capture(tmp_path/name,'navirai',execution_id=name,collected_at=iso(available))
+        payload={**{k:loc[k] for k in ('latitude','longitude')},'timezone':'UTC',
+                 'hourly':{'time':stamps,'precipitation':[0,*values]},'hourly_units':{'precipitation':'mm'}}
+        params={k:loc[k] for k in ('latitude','longitude')}
+        event=cap.record('https://api.open-meteo.com/v1/forecast',params,content=packed(payload),status=200,product=product)
+        event['collected_at_utc']=iso(available)
+        cap.finish()
+        ingest_manifest(db,cap.root,cap.manifest)
+
+    forecast('older',start-12*hour,[0]*24)
+    forecast('partial',start-hour,[2,0,0,None]+[0]*20)
+    forecast('late',start+hour,[8]*24)
+    forecast('history',start-2*hour,[6]*24,'historical_forecast')
+    cap=Capture(tmp_path/'measured','navirai',execution_id='measured')
+    station=observation(cap)['station']
+    measured=[1,0,0,2]+[0]*20
+    records=[{'valid_at_utc':stamps[i+1],'variable':'precipitation','unit':'mm',
+              'interval_start_utc':stamps[i],'interval_end_utc':stamps[i+1],'value':value}
+             for i,value in enumerate(measured)]
+    for series in (records, records[:1]):  # Duplicate identical observation is one reference.
+        cap.record('https://apitempo.inmet.gov.br/',{},content=packed({'station':station,'records':series}),status=200,product='station_import')
+    cap.finish()
+    ingest_manifest(db,cap.root,cap.manifest)
+    with connect(db) as con:
+        result=rain_report(con)
+        daily=next(r for r in result['results'] if r['duration_hours']==24)
+        short=next(r for r in result['results'] if r['duration_hours']==3)
+        assert (daily['n'],daily['mae_mm'],daily['misses'])==(1,3,1)
+        assert (short['n'],short['hits'],short['false_alarms'])==(8,1,7)
+        con.execute('DELETE FROM observations WHERE valid_at_utc=?',(stamps[6],))
+        incomplete=rain_report(con)
+        assert all(r['duration_hours']==3 for r in incomplete['results'])
+        assert next(r for r in incomplete['results'] if r['lead_max_hours']==24)['n']==7
+    assert result['calibration_validated'] is False
 
 def test_archive_hash_corruption_and_safe_restore(tmp_path):
     cap,_,_=fixture_capture(tmp_path);root=tmp_path/'archive';out=archive_capture(cap.root,root)

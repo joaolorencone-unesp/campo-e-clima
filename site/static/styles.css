@@ -125,6 +125,12 @@
 .agro-insight{border:1px solid #cde1eb;border-left:4px solid #2a8aa9;border-radius:10px;background:#f7fbfd;padding:13px 16px;line-height:1.6;font-size:13px;color:#274b62}
 .agro-insight.warn{border-left-color:#d18b33;background:#fffaf1;border-color:#f1e2be}.agro-insight.danger{border-left-color:#c65351;background:#fff7f5;border-color:#f1d8d4}
 .agro-insight>strong{display:block;font-size:14px;margin-bottom:3px}
+.agro-window-planner{margin:18px 0}
+.agro-window-settings{grid-template-columns:repeat(2,minmax(0,1fr));max-width:520px}
+.agro-window-settings select{min-height:44px}
+#agro-window-results h4,#agro-window-results p{margin:0 0 8px}
+#agro-window-results summary{cursor:pointer;padding:10px 0;color:#155675;font-weight:700}
+#agro-window-results ul{margin:4px 0;padding-left:20px}
 .agro-details{align-items:start}.agro-details>.panel{min-width:0}
 .agro-hours-table{min-width:780px}.agro-hours-table td{font-size:12px}.agro-status{display:inline-block;white-space:nowrap;padding:4px 7px;border-radius:6px;font-weight:700;font-size:11px;background:#eaf1f6;color:#4b687a}
 .agro-status.restrita{background:#fce5e2;color:#a63f36}.agro-status.marginal{background:#fff0d7;color:#945d1e}.agro-status.triagem{background:#def1e8;color:#17684b}.agro-status.indeterminada{background:#e9edf2;color:#566679}
