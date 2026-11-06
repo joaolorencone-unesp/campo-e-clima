@@ -6,13 +6,65 @@ import os
 import subprocess
 import time
 from pathlib import Path
-from scripts.science.common import config, location, now, write_json
+import requests
+from scripts.science.common import config, finite, instant, location, now, write_json
 from scripts.science.database import migrate, backup, counts
 from scripts.science.capture import Capture
 from scripts.science.ingest import ingest_manifest, export_parquet
-from scripts.science.archive import archive_capture, rebuild
+from scripts.science.archive import archive_capture, has_archivable_response, rebuild
 from scripts.science.http import FreeClient
 from scripts.freshness import summarize as summarize_freshness, apply_acquisition_times
+
+PUBLIC_SITE = 'https://joaolorencone-unesp.github.io/campo-e-clima/'
+
+
+def forecast_path(location_id):
+    return Path('site/data/latest.json' if location_id == 'navirai' else f'site/data/locations/{location_id}/latest.json')
+
+
+def restore_published_forecast(location_id):
+    """Restore a public forecast for the same point with its original acquisition clocks."""
+    path = forecast_path(location_id)
+    url = PUBLIC_SITE + path.relative_to('site').as_posix()
+    response = requests.get(url, headers={'Cache-Control': 'no-cache'}, timeout=12, allow_redirects=False)
+    if response.status_code != 200:
+        raise ValueError(f'Previsão anterior indisponível para {location_id} (HTTP {response.status_code})')
+    public = response.json()
+    site = public['site']
+    expected = location(location_id)
+    if any(site.get(k) != expected[k] for k in ('id', 'latitude', 'longitude', 'timezone')):
+        raise ValueError(f'Identidade divergente na previsão anterior de {location_id}')
+    issued = instant(public['issued_at_utc'])
+    if issued > instant(now()):
+        raise ValueError(f'Previsão anterior de {location_id} tem data futura')
+    hourly = (public.get('deterministic') or {}).get('hourly') or {}
+    times = hourly.get('time') or []
+    has_hourly = bool(times) and any(isinstance(series, list) and len(series) == len(times) and any(map(finite, series))
+                                    for key, series in hourly.items() if key != 'time')
+    has_ensembles = any(finite(row.get('p50_mm')) for row in public.get('rain_ensemble_daily') or [])
+    if not (has_hourly or has_ensembles):
+        raise ValueError(f'Previsão anterior de {location_id} sem dados válidos')
+    public['publication_state'] = 'previous_preserved'
+    write_json(path, public)
+    return {'location': location_id, 'state': 'previous_preserved', 'issued_at_utc': public['issued_at_utc']}
+
+
+def collect_pages(runtime, *, database, deadline):
+    results, failures = [], []
+    for loc in ('navirai', 'diamantino'):
+        try:
+            results.append(collect(loc, runtime, database=database, deadline=deadline))
+        except (Exception, SystemExit) as exc:
+            failures.append(loc)
+            print(f'::warning::{loc}: coleta indisponível ({type(exc).__name__}).')
+    if not results:
+        raise RuntimeError('Nenhuma localidade atualizada. A edição pública anterior permanece disponível.')
+    for loc in failures:
+        previous = restore_published_forecast(loc)
+        print(f"::warning::{loc}: edição anterior preservada ({previous['issued_at_utc']}).")
+        results.append(previous)
+    return results
+
 
 def collect(location_id, runtime, *, database=None, deadline=None):
     import scripts.collect as collector
@@ -27,7 +79,7 @@ def collect(location_id, runtime, *, database=None, deadline=None):
     original_fetch=collector.fetch;old=(collector.LAT,collector.LON,collector.TZ)
     os.environ.setdefault('PREVIOUS_PUBLICATION_DIR',str(Path(runtime)/'previous_publication'))
     old_output=os.environ.get('OUTPUT_JSON')
-    dest=Path('site/data/latest.json' if location_id=='navirai' else f'site/data/locations/{location_id}/latest.json')
+    dest=forecast_path(location_id)
     collector.LAT,collector.LON,collector.TZ=loc['latitude'],loc['longitude'],loc['timezone']
     def fetch(url,params):
         def validate(payload):
@@ -89,7 +141,7 @@ def collect(location_id, runtime, *, database=None, deadline=None):
                 print('Aviso: banco analítico indisponível; previsão preservada:',type(exc).__name__)
         return {'location':location_id,'requests':len(cap.manifest['requests']),'output':str(dest)}
     except BaseException:
-        cap.finish('partial_failure')
+        cap.finish('partial_failure' if has_archivable_response(cap.manifest) else 'unavailable')
         raise
     finally:
         official.http_json=original_official
@@ -112,17 +164,22 @@ def main(argv=None):
     p.add_argument('--start');p.add_argument('--end');p.add_argument('--run');p.add_argument('--since')
     p.add_argument('--file');p.add_argument('--station');p.add_argument('--format',default='canonical',choices=['canonical','inmet'])
     p.add_argument('--collection-budget-seconds',type=int,default=900)
+    p.add_argument('--preserve-published', action='store_true', help='No Pages, preserva o último JSON público de um ponto se só o outro atualizar')
     a=p.parse_args(argv)
     if a.command=='rebuild':result=rebuild(a.archive,a.output or a.db,since=a.since)
     elif a.command=='collect':
         if not 1<=a.collection_budget_seconds<=1200:p.error('Orçamento de coleta deve ficar entre 1 e 1200 segundos')
         deadline=time.monotonic()+a.collection_budget_seconds
-        result=[]
-        for loc in (['navirai','diamantino'] if a.location=='all' else [a.location]):
-            try:result.append(collect(loc,a.runtime,database=a.db,deadline=deadline))
-            except (Exception,SystemExit) as exc:
-                if loc=='navirai':raise
-                result.append({'location':loc,'state':'failed','error':type(exc).__name__})
+        if a.preserve_published:
+            if a.location != 'all':p.error('--preserve-published requer --location all')
+            result=collect_pages(a.runtime,database=a.db,deadline=deadline)
+        else:
+            result=[]
+            for loc in (['navirai','diamantino'] if a.location=='all' else [a.location]):
+                try:result.append(collect(loc,a.runtime,database=a.db,deadline=deadline))
+                except (Exception,SystemExit) as exc:
+                    if loc=='navirai':raise
+                    result.append({'location':loc,'state':'failed','error':type(exc).__name__})
     elif a.command=='archive':
         result=[archive_capture(Path(a.runtime)/'captures'/loc,a.archive) for loc in
                 (['navirai','diamantino'] if a.location=='all' else [a.location])]

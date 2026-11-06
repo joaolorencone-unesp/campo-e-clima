@@ -45,7 +45,11 @@
   const id=locationIdFor(point)||(point?.custom?null:(st?.site?.id||'navirai'));
   return {id,name:id==='diamantino'?'Diamantino–MT':id==='navirai'?'Naviraí–MS':null};
  }
- function refresh(){const loc=currentLocation();void load(loc.id,loc.name);}
+ function refresh(){
+  const loc=currentLocation(),st=typeof state!=='undefined'?state:null;
+  const preserved=st?.publication_state==='previous_preserved'&&st?.site?.id===loc.id;
+  void load(preserved?null:loc.id,loc.name);
+ }
  if(typeof document!=='undefined'){
   root.addEventListener('campo:forecast-rendered',refresh);
   root.addEventListener('campo:location-changed',()=>setTimeout(refresh,50));
