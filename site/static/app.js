@@ -97,6 +97,10 @@ function statusBar(){
    ? `⚠ <strong>Ensembles sem coleta recente (${age==null?'horário desconhecido':age+' min'}).</strong> ${forecastText}Frequências de chuva e rajada estão desatualizadas; não utilizá-las para decisões atuais.`
    : `⚠ <strong>Ensembles adquiridos há ${age} min</strong> (${modelOK} modelos com chuva; ${gustOK} com rajadas). ${forecastText}Pode existir rodada mais recente: frequências potencialmente desatualizadas, confira o frescor por modelo em Qualidade, fontes & diagnóstico.`;}
  else{$('status').innerHTML=`✓ <strong>Ensembles publicados há ${age} min:</strong> ${modelOK} modelos com chuva; ${gustOK} com rajadas. ${forecastText}<strong>Frequências não calibradas.</strong> Observações oficiais têm atualização separada.`;}
+ if(state?.publication_state==='previous_preserved'){
+  $('status').classList.add('warning');
+  $('status').insertAdjacentHTML('afterbegin','<strong>⚠ Coleta indisponível para este local. Última previsão publicada preservada.</strong> ');
+ }
  return {stale,age,modelOK,gustOK,issued};
 }
 function metric(label,value,unit,desc){return `<article class="metric"><span class="label">${esc(label)}</span><span class="number">${fmt(value)}<span class="unit"> ${esc(unit)}</span></span><span class="hint">${esc(desc)}</span></article>`;}

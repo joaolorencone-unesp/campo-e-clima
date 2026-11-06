@@ -33,7 +33,8 @@ def location_summary(public: dict | None, path: Path) -> dict:
     errors = {name: (item.get('detail') or item.get('error')) for name, item in {**sources, **models}.items()
               if isinstance(item, dict) and item.get('state') in ('error', 'unavailable', 'invalid')}
     comparison = public.get('previous_run_comparison') or {}
-    return {'state': 'ok', 'path': str(path), 'issued_at_utc': public.get('issued_at_utc'), 'schema_version': public.get('schema_version'),
+    state = 'previous_preserved' if public.get('publication_state') == 'previous_preserved' else 'ok'
+    return {'state': state, 'path': str(path), 'issued_at_utc': public.get('issued_at_utc'), 'schema_version': public.get('schema_version'),
             'system_version': public.get('system_version'),
             'models_valid_rain': fresh.get('models_valid_rain'), 'models_valid_gusts': fresh.get('models_valid_gusts'),
             'models_valid_by_variable': fresh.get('models_valid_by_variable'),

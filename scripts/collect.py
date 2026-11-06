@@ -801,6 +801,8 @@ def main(include_local_sources=True):
     result['agro_ensemble_coverage'] = agro_variable_coverage(by_model_agro)
     result['spray_joint_hourly'] = mix_joint_hourly(by_model_spray)
     result['spray_joint_windows_2h'] = mix_joint_windows2h(by_model_spray)
+    if not result['deterministic'] and not by_model:
+        raise SystemExit('No fresh weather values available: not publishing a misleading successful update')
     result['previous_run_comparison'] = compare_with_previous_publication(result)
     result['hourly_resolution_note'] = ('Janelas de 1 h usam apenas modelos com passo nativo horário; janelas de 3 h excluem modelos de 6 h. '
                                         'Passos detectados: ' + ', '.join(f"{name}={step or '?'}h" for name, step in sorted(by_model_steps.items())))
@@ -911,8 +913,6 @@ def main(include_local_sources=True):
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(json.dumps(result, ensure_ascii=False, separators=(',',':')), encoding='utf-8')
     print('Wrote', dest, '; deterministic:', bool(result['deterministic']), '; ensemble models:', len(by_model))
-    if not result['deterministic'] and not by_model:
-        raise SystemExit('No fresh weather values available: not publishing a misleading successful update')
 
 if __name__ == '__main__':
     main()

@@ -43,7 +43,7 @@ jobs:
           python-version: '3.11'
       - run: pip install -r requirements.txt
       - name: Operational collector tests (full science tests run in PR CI)
-        run: python -m pytest -q tests/test_collect_offline.py tests/test_ensemble.py
+        run: python -m pytest -q tests/test_collect_offline.py tests/test_ensemble.py tests/test_pages_collection.py
       - name: Front-end update smoke test (offline)
         run: node tests/frontend_smoke.cjs
       - name: Rain trace and dry-scenario regression (offline)
@@ -120,7 +120,7 @@ jobs:
           OPENWEATHER_FREE_API_KEY: ${{ secrets.OPENWEATHER_FREE_API_KEY }}
           # Optional free INMET token (requested from INMET); never written to the archive or the site.
           INMET_API_TOKEN: ${{ secrets.INMET_API_TOKEN }}
-        run: python -m scripts.science_cli collect --location all
+        run: python -m scripts.science_cli collect --location all --preserve-published
       - name: Export free INMET station metadata for arbitrary farm coordinates
         continue-on-error: true
         run: python scripts/export_inmet_catalog.py

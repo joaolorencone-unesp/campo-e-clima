@@ -322,6 +322,8 @@ def main(argv=None):
         if not p.is_file():
             continue
         public = json.loads(p.read_text(encoding='utf-8'))
+        if public.get('publication_state') == 'previous_preserved':
+            continue
         loc = (public.get('site') or {}).get('id') or p.parent.name
         out = Path(args.output_dir) / f'bulletin_{loc}.json'
         result = generate(public)
