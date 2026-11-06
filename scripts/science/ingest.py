@@ -102,7 +102,9 @@ def ingest_manifest(db, root, manifest):
         for event in manifest['requests']:
             if not event.get('raw_sha256'):
                 continue
-            body=checked_object(root,event)
+            # RAW SHA-256 and size stay strict; the gzip container may legitimately differ
+            # from the capture-time bytes (legacy object kept for an identical RAW payload).
+            body=checked_object(root,event,strict_gzip=False)
             register_raw(con,event)
             # Extended daily members stay in immutable RAW + the public summary.
             # They are not hourly forecasts or observation/forecast verification pairs.
@@ -157,7 +159,7 @@ def ingest_manifest(db, root, manifest):
         if snapshot:
             register_raw(con,snapshot)
             # Provisional Embrapa deliberately remains only in RAW/public snapshot.
-            data=json.loads(checked_object(root,snapshot))
+            data=json.loads(checked_object(root,snapshot,strict_gzip=False))
             official=data.get('official') or {}
             hourly=official.get('inmet_hourly_nearby') or {}
             station=next((s for s in (official.get('inmet_stations') or {}).get('nearest',[])

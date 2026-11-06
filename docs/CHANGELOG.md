@@ -1,5 +1,9 @@
 # Changelog
 
+## 4.1.1 — reconstrução dos relatórios tolera contêiner gzip legado já arquivado, 05/11/2026
+
+- `scripts/science/ingest.py`: a ingestão lia cada objeto com verificação estrita do hash do contêiner gzip, enquanto `verify_manifest` (4.0.1) já aceitava a divergência de contêiner com RAW idêntico. O manifesto da captura de 05/11/2026 12 UTC, publicado no ramo `weather-archive` antes da 4.0.1, registra o hash do contêiner da captura para duas respostas INMET idênticas cujo objeto ficou no contêiner legado; a execução diária `42040222508` falhou em "Relatório derivado falhou; RAW preservado" (`SHA-256 gzip divergente`) mesmo com a verificação por estação concluída. A ingestão passa a usar o mesmo contrato: SHA-256 do RAW e tamanho estritos, contêiner tolerado. Reprodução local com reconstrução do ramo real e teste de regressão em `tests/test_science_v22.py`.
+
 ## 4.1.0 — gatilho externo, CEMADEN, RSS de avisos, relâmpagos GLM, MERGE e índices de geada, 05/11/2026
 
 - Coleta: evento `repository_dispatch` (`collect`) em `pages.yml` para um agendador externo gratuito compensar o cron do GitHub ([docs/OPERACAO_GATILHO_EXTERNO.md](OPERACAO_GATILHO_EXTERNO.md)).
