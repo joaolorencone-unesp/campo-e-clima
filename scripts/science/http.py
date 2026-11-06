@@ -53,12 +53,19 @@ class FreeClient:
         equivalent=max(1,math.ceil(variables*members/10))*max(1,math.ceil(float(params.get('forecast_days',7))/14))
         ledger=self.root/'usage.json'
         usage=json.loads(ledger.read_text(encoding='utf-8')) if ledger.exists() else {}
-        day=now()[:10]
-        blocked=usage.get('blocked_until_utc')
-        if blocked and instant(blocked)>instant(now()):
+        stamp=instant(now())
+        day=stamp.date().isoformat()
+        provider='open-meteo.com' if parsed.hostname.endswith('.open-meteo.com') else 'inmet.gov.br'
+        cooldowns={name: until for name, until in usage.get('blocked_until_by_provider', {}).items()
+                   if instant(until)>stamp}
+        # A legacy cache does not identify the source of its cooldown. Honor it until expiry.
+        legacy=usage.get('blocked_until_utc')
+        if (legacy and instant(legacy)>stamp) or provider in cooldowns:
             response=requests.Response();response.status_code=429
-            raise requests.HTTPError('Cooldown gratuito ativo após HTTP 429; nova consulta não enviada',response=response)
+            raise requests.HTTPError(f'Cooldown gratuito ativo para {provider}; nova consulta não enviada',response=response)
         if usage.get('day')!=day:usage={'day':day,'equivalent_calls':0,'http_requests':0}
+        usage.pop('blocked_until_utc',None)
+        usage['blocked_until_by_provider']=cooldowns
         for attempt in range(self.limits['http_max_attempts']):
             remaining=self.deadline-time.monotonic() if self.deadline is not None else self.limits['http_timeout_seconds']
             if remaining<=0:raise requests.Timeout('Orçamento de coleta encerrado; captura parcial preservada')
@@ -81,7 +88,7 @@ class FreeClient:
                 except ValueError:
                     try:seconds=max(60,(parsedate_to_datetime(retry)-instant(now())).total_seconds())
                     except (ValueError,TypeError):seconds=3600
-                usage['blocked_until_utc']=(instant(now())+dt.timedelta(seconds=seconds)).isoformat()
+                cooldowns[provider]=(instant(now())+dt.timedelta(seconds=seconds)).isoformat()
                 write_json(ledger,usage)
                 response.raise_for_status()
             if 500<=response.status_code<600 and attempt+1<self.limits['http_max_attempts']:

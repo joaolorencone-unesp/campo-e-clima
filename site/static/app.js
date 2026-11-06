@@ -13,7 +13,7 @@ const ddmm = iso => typeof iso==='string' && /^\d{4}-\d\d-\d\d/.test(iso) ? iso.
 const hh = iso => iso?.slice(11,13)+'h';
 const dh = iso => ddmm(iso)+' '+hh(iso);
 const activeTZ = () => state?.site?.timezone || 'America/Campo_Grande';
-const activeOffset = () => Number.isFinite(state?.deterministic?.utc_offset_seconds) ? state.deterministic.utc_offset_seconds : -14400;
+const activeOffset = () => [state?.deterministic?.utc_offset_seconds,state?.site?.utc_offset_seconds].find(Number.isFinite) ?? -14400;
 const offsetISO = (secs) => `${secs < 0?'-':'+'}${String(Math.floor(Math.abs(secs)/3600)).padStart(2,'0')}:${String(Math.floor(Math.abs(secs)%3600/60)).padStart(2,'0')}`;
 const parseGridTime = t => new Date(t + offsetISO(activeOffset()));
 const dateLocal = () => localISO(new Date());
@@ -75,40 +75,40 @@ function statusBar(){
  const validModels=Object.values(state?.ensemble_models||{}).filter(x=>x.state==='ok'&&x.precipitation_members>0);
  const acquired=validModels.map(x=>Date.parse(x.collected_at_utc));
  const hasTimes=acquired.length>0&&acquired.every(Number.isFinite);
- const issued=hasTimes?new Date(Math.min(...acquired)).toISOString():(validModels.length?null:state?.issued_at_utc);
- const emission=issued?new Date(issued):null;
- const age=emission && Number.isFinite(emission.getTime())?Math.round((Date.now()-emission.getTime())/60000):null;
+ const acquiredAt=hasTimes?Math.min(...acquired):null;
+ const age=acquiredAt!==null?Math.round((Date.now()-acquiredAt)/60000):null;
  // Ensembles are issued every 6–12 h; an acquisition older than 3 h may already be one cycle behind.
  const stale=age===null||age<0||age>180;
  const veryStale=age===null||age<0||age>12*60;
  const liveDate=state?._liveForecastAt?new Date(state._liveForecastAt):null;
  const liveFresh=liveDate && Number.isFinite(liveDate.getTime()) && Date.now()-liveDate.getTime()<90*60000;
- const issuedText=emission?emission.toLocaleString('pt-BR',{timeZone:activeTZ(),dateStyle:'short',timeStyle:'short'}):'não registrada';
- $('last-updated').textContent=`${state?.site?.custom?'Consulta do ponto':'Ensembles — coleta mais antiga em uso'}: ${issuedText} (horário local do ponto)`;
+ const localStamp=stamp=>Number.isFinite(stamp)?new Date(stamp).toLocaleString('pt-BR',{timeZone:activeTZ(),dateStyle:'short',timeStyle:'short'}):'não registrada';
+ $('last-updated').textContent=`${state?.site?.custom?'Consulta do ponto':'Emissão da previsão publicada'}: ${localStamp(Date.parse(state?.issued_at_utc))} · Aquisição mais antiga dos ensembles: ${localStamp(acquiredAt)} (horário local do ponto)`;
  const modelOK=Object.values(state?.ensemble_models||{}).filter(x=>x.state==='ok'&&x.precipitation_members>0).length;
  const gustOK=Object.values(state?.ensemble_models||{}).filter(x=>x.gust_members>0).length;
  const forecastText=liveFresh?`Previsão determinística consultada diretamente às ${liveDate.toLocaleTimeString('pt-BR',{timeZone:activeTZ(),hour:'2-digit',minute:'2-digit'})}. `:'';
- $('status').classList.toggle('warning',stale);
+ const missingDeterministic=!state?.deterministic;
+ const previousPreserved=state?.publication_state==='previous_preserved';
+ const status=$('status');
+ status.classList.toggle('warning',stale||missingDeterministic||previousPreserved);
  if(state?.site?.custom){
-  $('status').innerHTML= modelOK
+  status.innerHTML= modelOK
     ? `✓ <strong>${modelOK} ensembles de chuva e ${gustOK} com rajadas consultados para o ponto selecionado.</strong> ${forecastText}Dados em grade, sem calibração local; fontes de Naviraí não são reutilizadas.`
     : `ℹ <strong>Previsão determinística carregada para o ponto selecionado.</strong> Probabilidades dos ensembles ainda não estão disponíveis. ${forecastText}Não confundir esta localidade com Naviraí.`;
- }else if(stale){$('status').innerHTML=veryStale
+ }else if(!modelOK){status.innerHTML=`ℹ <strong>Ensembles indisponíveis nesta publicação.</strong> ${forecastText}`;}
+ else if(stale){status.innerHTML=veryStale
    ? `⚠ <strong>Ensembles sem coleta recente (${age==null?'horário desconhecido':age+' min'}).</strong> ${forecastText}Frequências de chuva e rajada estão desatualizadas; não utilizá-las para decisões atuais.`
    : `⚠ <strong>Ensembles adquiridos há ${age} min</strong> (${modelOK} modelos com chuva; ${gustOK} com rajadas). ${forecastText}Pode existir rodada mais recente: frequências potencialmente desatualizadas, confira o frescor por modelo em Qualidade, fontes & diagnóstico.`;}
- else{$('status').innerHTML=`✓ <strong>Ensembles publicados há ${age} min:</strong> ${modelOK} modelos com chuva; ${gustOK} com rajadas. ${forecastText}<strong>Frequências não calibradas.</strong> Observações oficiais têm atualização separada.`;}
- if(state?.publication_state==='previous_preserved'){
-  $('status').classList.add('warning');
-  $('status').insertAdjacentHTML('afterbegin','<strong>⚠ Coleta indisponível para este local. Última previsão publicada preservada.</strong> ');
- }
- return {stale,age,modelOK,gustOK,issued};
+ else{status.innerHTML=`✓ <strong>Ensemble mais antigo adquirido há ${age} min:</strong> ${modelOK} modelos com chuva; ${gustOK} com rajadas. ${forecastText}<strong>Frequências não calibradas.</strong> Observações oficiais têm atualização separada.`;}
+ if(missingDeterministic)status.innerHTML='<strong>⚠ Previsão determinística indisponível nesta publicação.</strong> '+status.innerHTML;
+ if(previousPreserved)status.innerHTML='<strong>⚠ Coleta indisponível para este local. Última previsão publicada preservada.</strong> '+status.innerHTML;
+ return {stale,age,modelOK,gustOK,issued:state?.issued_at_utc};
 }
 function metric(label,value,unit,desc){return `<article class="metric"><span class="label">${esc(label)}</span><span class="number">${fmt(value)}<span class="unit"> ${esc(unit)}</span></span><span class="hint">${esc(desc)}</span></article>`;}
 function dailyData(){return state?.deterministic?.daily||{};}
 function renderOverview(idx){
  const d=state?.deterministic,h=d?.hourly||{},c=d?.current||{},daily=dailyData();
- const v=idx.slice(0,24).map(x=>val(h,'precipitation',x.i));
- const rain24=v.length===24&&v.every(x=>num(x)!==null)?v.reduce((s,x)=>s+Number(x),0):null;
+ const rainWindow=window.CampoSummary?.rain24Window(state,idx);
  const todayLocal=localISO(new Date());
  const currentDate=idx[0]?.t?.slice(0,10)||todayLocal;
  const ens=state?.rain_ensemble_daily||[];
@@ -119,7 +119,7 @@ function renderOverview(idx){
   metric('Temperatura prevista agora',c.temperature_2m,'°C','Open-Meteo Forecast'),
   metric('Umidade relativa',c.relative_humidity_2m,'%','Previsão de modelo'),
   metric('Vento médio',c.wind_speed_10m,'km/h',directionName(c.wind_direction_10m)+' (de onde sopra)'),
-  metric('Chuva nas próximas 24h',rain24,'mm','Previsão determinística'),
+  metric('Chuva nas próximas 24h',rainWindow?.total,'mm',rainWindow?window.CampoSummary.formatRainWindow(rainWindow):'Acumulado determinístico indisponível'),
   metric('Maior chuva média • 7 dias',biggest?.mean_mm,'mm',biggest?ddmm(biggest.date)+' • multimodelo':'Ensemble indisponível'),
   metric('Rajada forte >40 km/h',strongest?.p_gt_40_kmh!=null?strongest.p_gt_40_kmh*100:null,'% ',strongest?'Frequência em '+ddmm(strongest.date):'Sem ensemble')
  ].join('');
@@ -381,9 +381,9 @@ function ensembleScreening(){
  const modelsOK=modelStatuses.filter(x=>x.status==='ok');
  const pstatus=$('spray-ensemble-status');
  if(!valid.length){
-  if($('spray-quick-diagnosis'))$('spray-quick-diagnosis').textContent='Sem amostra conjunta completa. As previsões numéricas continuam visíveis, mas não foi estimada frequência de cenário.';
+  if($('spray-quick-diagnosis'))$('spray-quick-diagnosis').textContent='Sem amostra conjunta completa para estimar a frequência dos cenários.';
   pstatus.className='notice warning';
-  pstatus.innerHTML='<b>Não há amostra conjunta completa dos ensembles para pulverização.</b> São necessárias as mesmas variáveis e o mesmo identificador de membro. A previsão determinística abaixo continua disponível apenas como referência; <b>não estima probabilidade de cenário.</b>';
+  pstatus.innerHTML='<b>Não há amostra conjunta completa dos ensembles para pulverização.</b> São necessárias as mesmas variáveis e o mesmo identificador de membro. '+(state?.deterministic?.hourly?'A previsão determinística serve como referência.':'A previsão determinística também está indisponível.');
   for(const id of ['spray-prob-plot','spray-causes-plot','spray-2h-plot']) {clearPlot(id,'Sem amostra conjunta verificada; não foi atribuída probabilidade.');}
   $('spray-scenario-cards').innerHTML='';$('spray-best2h').innerHTML='';if($('spray-operational-note'))$('spray-operational-note').textContent='Sem membros completos para separar triagem numérica e pendências operacionais; nenhuma condição foi considerada aprovada.';if($('spray-reason-detail'))$('spray-reason-detail').textContent='Sem membros completos: não foi possível identificar as causas.';
   tableFill('spray-ensemble-table',['Hora','Modelos','Membros','Passa','Marginal','Restrita','Indeterminada'],[],'Nenhum membro com todos os campos necessários nesta coleta.');
@@ -694,12 +694,13 @@ async function refresh(manual=false){
  try{
   try{
    const published=await fetchWithTimeout(DATA_URL+'?cache='+Date.now(),18);
-   if(!published||!published.issued_at_utc||!published.deterministic)throw Error('Publicação sem os campos esperados');
+   const hasEnsembles=Array.isArray(published?.rain_ensemble_daily)&&published.rain_ensemble_daily.some(row=>Number.isFinite(row?.p50_mm));
+   if(!published?.issued_at_utc||(!published.deterministic&&!hasEnsembles))throw Error('Publicação sem previsão utilizável');
    publishedNew=published.issued_at_utc!==prior?.issued_at_utc;
    if(window.CampoLocation?.isCustom())return;
    state=published;
    // Preserve the latest direct forecast when GitHub did not publish a newer run.
-   if(!publishedNew && prior?._liveForecastAt && Date.now()-new Date(prior._liveForecastAt).getTime()<90*60000){
+   if((!publishedNew||!published.deterministic) && prior?._liveForecastAt && Date.now()-new Date(prior._liveForecastAt).getTime()<90*60000){
     state.deterministic=prior.deterministic;state._liveForecastAt=prior._liveForecastAt;
    }
   }catch(e){errorHosted=e;if(window.CampoLocation?.isCustom())return;if(!state)state=prior;}

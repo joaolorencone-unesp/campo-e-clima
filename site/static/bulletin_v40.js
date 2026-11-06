@@ -22,7 +22,8 @@
   $('bulletin-text').textContent=bulletin.text;
   const badge=$('bulletin-origin');badge.textContent=origin.text;badge.className='source-badge origin-'+origin.cls;
   let issued='—';try{issued=bulletin.issued_at_utc?new Date(bulletin.issued_at_utc).toLocaleString('pt-BR',{timeZone:siteTimeZone()})+' (horário local do ponto)':'—';}catch(_){issued=bulletin.issued_at_utc||'—';}
-  $('bulletin-meta').textContent=`${locationName?locationName+' · ':''}gerado ${ageText(bulletin.generated_utc)} a partir da previsão emitida ${issued} · ${bulletin.disclaimer||''}`;
+  const interval=root.CampoSummary?.formatRainWindow?.(bulletin.rain_24h_window_local);
+  $('bulletin-meta').textContent=`${locationName?locationName+' · ':''}gerado ${ageText(bulletin.generated_utc)} a partir da previsão emitida ${issued}${interval?' · Chuva determinística de '+interval:''} · ${bulletin.disclaimer||''}`;
   card.hidden=false;
  }
  async function load(locationId,locationName){

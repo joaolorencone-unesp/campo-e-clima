@@ -27,6 +27,7 @@ def test_facts_cover_the_published_numbers_and_rule_text_is_deterministic():
     sheet = ab.build_facts(public(), now=NOW)
     text = '\n'.join(sheet['facts'])
     assert 'Chuva determinística prevista nas próximas 24 h: 12,0 mm' in text
+    assert sheet['rain_24h_window_local'] == {'start': '2026-11-05T08:00', 'end': '2026-11-06T08:00'}
     assert 'mediana 8,7 mm' in text and '89% dos membros' in text and 'Acumulado em 7 dias: mediana 41 mm' in text
     assert '2 aviso(s)' in text and 'não probabilidades calibradas' in sheet['facts'][-1]
     assert ab.rule_based_text(sheet) == ab.rule_based_text(ab.build_facts(public(), now=NOW))
@@ -46,6 +47,7 @@ def test_generate_defaults_to_rules_and_refuses_unknown_or_paid_providers(monkey
     monkeypatch.delenv('AI_BULLETIN_PROVIDER', raising=False)
     out = ab.generate(public(), now=NOW, ledger=tmp_path / 'l.json')
     assert out['status'] == 'rules' and out['provider'] == 'none' and out['text'] == out['rule_based_text']
+    assert out['rain_24h_window_local'] == {'start': '2026-11-05T08:00', 'end': '2026-11-06T08:00'}
     out = ab.generate(public(), now=NOW, provider='openai-paid', ledger=tmp_path / 'l.json')
     assert out['status'] == 'rules_fallback' and 'não permitido' in out['error']
     monkeypatch.setenv('AI_ALLOW_PAID', '1')
