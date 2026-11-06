@@ -8,6 +8,7 @@ from . import FORMULA_VERSION
 from .common import config, digest, haversine, instant, now, packed, write_json
 from .database import connect
 from .metrics import deterministic, brier_score, crps, reliability, events
+from .operational_rain import report as operational_rain_report
 
 THRESHOLDS=(.1,1,3,5,10,20)
 EMPTY_MESSAGE='Histórico de previsões em construção. Ainda não há amostras suficientes para validar uma calibração local.'
@@ -159,8 +160,9 @@ def evaluate(db,output):
             status.append({**loc,'forecast_runs':forecast_count,'observation_values_basic_qc':observation_count,
                 'paired_values':n,'calibration_validated':False,'message':EMPTY_MESSAGE,
                 'state':'descriptive_pairs_available' if n else 'insufficient_verified_pairs'})
+        rain_report=operational_rain_report(con)
     report={'schema_version':1,'generated_at_utc':now(),'formula_version':FORMULA_VERSION,
-        'locations':status,'results':results,'excluded':rejected,'excluded_by_location':by_location,'ai_provider':'none',
+        'locations':status,'results':results,'operational_rain':rain_report,'excluded':rejected,'excluded_by_location':by_location,'ai_provider':'none',
         'limitations':['Sem selo de calibração validada','Chuva horária pode ser interpolada pelo provedor',
                        'Inicialização e disponibilidade histórica são conceitos distintos',
                        'Resultados brutos descritivos não constituem teste independente de um calibrador']}

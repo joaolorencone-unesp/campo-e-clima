@@ -16,6 +16,14 @@ def validate(name,value):
         for loc in value['locations']:
             if loc['id'] not in expected or any(abs(loc[k]-expected[loc['id']][k])>1e-6 for k in ('latitude','longitude')):raise ValueError('Coordenadas científicas divergentes')
         if any(r['location_id'] not in ids for r in value['results']):raise ValueError('Resultado sem localidade cadastrada')
+        if 'operational_rain' in value:
+            rain=value['operational_rain']
+            if (not isinstance(rain,dict) or rain.get('calibration_validated') is not False
+                or rain.get('threshold_mm')!=1 or not isinstance(rain.get('results'),list)
+                or not isinstance(rain.get('station_files_unavailable'),list)
+                or any(r['location_id'] not in ids or r['duration_hours'] not in (3,24)
+                       or r['lead_max_hours'] not in (24,48,72) for r in rain['results'])):
+                raise ValueError('Verificação de janelas operacionais incompatível')
     if name=='calibration.json' and value.get('primary_forecast_replaced') is not False:raise ValueError('Promoção de calibrador não autorizada')
     if name=='explanation.json' and value.get('effective_provider')!='none':raise ValueError('IA externa não autorizada')
     return value
