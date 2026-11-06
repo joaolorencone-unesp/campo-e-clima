@@ -19,7 +19,7 @@ const state={site:{id:'navirai',timezone:'America/Campo_Grande',utc_offset_secon
  gust_ensemble_daily:[{date:'2026-11-05',p_gt_30_kmh:.4,p_gt_40_kmh:.35,model_count:3}],
  rain_dry_spell:{p_ge_5_days:.1,p_ge_3_days:.3,dry_day_threshold_mm:1,end:'2026-11-10'},
  agro_ensemble_hourly:[{time:localTimes[12],variables:{temperature_2m:{p90:36,p_ge_35:.4},vpd_kpa:{p_ge_2_5:.1}}}],
- official:{inmet_alerts:{municipal_alerts:[{id:'1'}]},inmet_hourly_nearby:{state:'ok',station_name:'ITAQUIRAI',station_code:'A752',distance_km:42.8,records:[{valid_at_utc:'2026-11-05T17:00',temperature_c:21.3,rh_pct:90,precipitation_previous_hour_mm:0.2}]}},
+ official:{inmet_alerts:{municipal_alerts:[{id:'1'}]},inmet_hourly_nearby:{state:'ok',station_name:'ITAQUIRAI',station_code:'A752',distance_km:42.8,records:[{valid_at_utc:'2026-11-05T17:00Z',temperature_c:21.3,rh_pct:90,precipitation_previous_hour_mm:0.2}]}},
  freshness:{models_with_newer_run_pending:['A']}};
 const s=summary.build(state,now);
 assert.equal(s.ready,true);
@@ -29,6 +29,7 @@ assert.equal(s.cards.find(c=>c.key==='rain6').value,'62% dos membros');
 assert.match(s.cards.find(c=>c.key==='rain6').note,/não é probabilidade calibrada/);
 assert.match(s.cards.find(c=>c.key==='rain7').value,/48 mm/);
 assert.match(s.cards.find(c=>c.key==='rain24').detail,/Amanhã: mediana 14,0 mm/);
+assert.match(s.cards.find(c=>c.key==='rain24').note,/05\/11 14:00 a 06\/11 14:00/);
 assert.ok(s.risks.some(r=>r.kind==='heavy_rain'&&/06\/11/.test(r.text)),'heavy rain risk from p_gt_20>=0.3');
 assert.ok(s.risks.some(r=>r.kind==='gust'));
 assert.ok(s.risks.some(r=>r.kind==='heat'));
@@ -46,6 +47,11 @@ assert.ok(s.windows.every(w=>Number(w.start.slice(11,13))>=6),'windows start in 
 const morning=summary.build(state,Date.parse('2026-11-05T12:30:00Z'));
 assert.match(morning.headline,/modelos divididos/);assert.match(morning.cards.find(c=>c.key==='rain24').detail,/Hoje: mediana 1,0 mm/);
 const empty=summary.build({},now);assert.equal(empty.ready,false);assert.match(empty.headline,/Sem previsão/);
+const ensembleOnly=summary.build({...state,deterministic:null},now);
+assert.equal(ensembleOnly.ready,true);
+assert.match(ensembleOnly.headline,/Chuva provável amanhã/);
+assert.equal(ensembleOnly.cards.find(c=>c.key==='rain24').value,'—');
+assert.match(ensembleOnly.cards.find(c=>c.key==='rain24').detail,/Amanhã: mediana 14,0 mm/);
 const noEnsemble=summary.build({...state,rain_ensemble_daily:[],rain_ensemble_hourly:[],rain_ensemble_accumulated:[],rain_model_agreement_daily:[],gust_ensemble_daily:[],agro_ensemble_hourly:[],ensemble_models:{},rain_dry_spell:null,official:{}},now);
 assert.equal(noEnsemble.cards.find(c=>c.key==='rain7').value,'—','no accumulation is not zero');
 assert.match(noEnsemble.headline,/determinística/);

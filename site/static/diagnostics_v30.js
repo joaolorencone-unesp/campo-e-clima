@@ -31,10 +31,12 @@
   const tz='America/Campo_Grande';
   const loc=Object.entries(d.locations||{}).map(([id,l])=>`<tr><td>${esc(id)}</td><td class="${l.state==='ok'?'ok':'bad'}">${esc(l.state)}</td><td>${esc(when(l.issued_at_utc,tz))}</td><td>${l.models_valid_rain??'—'} / ${l.models_valid_gusts??'—'}</td><td>${esc(age(l.ensemble_oldest_acquisition_age_min))}</td><td>${(l.cache_hits||[]).length}</td><td>${esc(l.observations?.inmet_hourly||'—')} / ${esc(l.observations?.embrapa||'—')}</td><td>${Object.entries(l.errors||{}).map(([k,v])=>`${esc(k)}: ${esc(v)}`).join('<br>')||'—'}</td></tr>`).join('');
   const cad=d.cadence||{},q=d.http_quota_ledger||{},a=d.archive||{};
+  const cooldowns=Object.entries(q.blocked_until_by_provider||{}).map(([source,until])=>`${source}: até ${when(until,tz)}`);
+  if(q.blocked_until_utc)cooldowns.push(`bloqueio até ${when(q.blocked_until_utc,tz)}`);
   box.innerHTML=`<div class="diag-grid">
    <div class="diag-kpi"><small>Estado geral</small><strong class="${d.overall_state==='ok'?'ok':'warn'}">${esc(d.overall_state||'—')}</strong><span>${esc(when(d.generated_utc,tz))}</span></div>
    <div class="diag-kpi"><small>Execuções nas últimas 24 h</small><strong>${cad.runs_last_24h??'—'}<small> / ${cad.expected_runs_per_day??48} agendadas</small></strong><span>intervalo mediano ${esc(age(cad.median_gap_min))}, máximo ${esc(age(cad.max_gap_min))}</span></div>
-   <div class="diag-kpi"><small>Chamadas equivalentes hoje (estimativa local)</small><strong>${q.equivalent_calls??'—'}</strong><span>${q.http_requests??'—'} requisições HTTP · dia ${esc(q.day||'—')}${q.blocked_until_utc?' · bloqueio até '+esc(q.blocked_until_utc):''}</span></div>
+   <div class="diag-kpi"><small>Chamadas equivalentes hoje (estimativa local)</small><strong>${q.equivalent_calls??'—'}</strong><span>${q.http_requests??'—'} requisições HTTP · dia ${esc(q.day||'—')}${cooldowns.length?' · '+esc(cooldowns.join(' · ')):''}</span></div>
    <div class="diag-kpi"><small>Arquivo científico</small><strong class="${a.severity==='ok'?'ok':'warn'}">${esc(a.severity||'—')}</strong><span>${a.manifest_count??'—'} manifestos · ${esc(when(a.updated_at_utc,tz))}</span></div>
   </div>
   <div class="scroll"><table><thead><tr><th>Local</th><th>Estado</th><th>Publicação</th><th>Modelos chuva / rajada</th><th>Aquisição mais antiga</th><th>Cache</th><th>Obs. INMET / Embrapa</th><th>Erros</th></tr></thead><tbody>${loc}</tbody></table></div>

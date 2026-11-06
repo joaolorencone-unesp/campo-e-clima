@@ -1,36 +1,22 @@
-# Gatilho externo gratuito para a coleta (cadência real de 30 min)
+# Coleta de contingência para o Campo e Clima
 
-O agendamento `cron` do GitHub Actions é "melhor esforço": na auditoria da v3 só cerca de 9 % das 48 rodadas diárias executaram. Desde a v4.1 o fluxo `Collect and deploy Campo e Clima` também aceita o evento `repository_dispatch` com tipo `collect`, que pode ser disparado por qualquer agendador externo gratuito. Cada disparo roda a coleta completa e publica o site; o cache de ensembles (máximo 4 h) e os caches diários continuam valendo, então o custo em consultas aos provedores não muda.
+O cron do GitHub Actions pode atrasar ou perder disparos. A verificação externa consulta a idade da publicação de Naviraí e Diamantino. A partir de 35 minutos em qualquer um dos locais, confere a fila do workflow `pages.yml`. Só solicita uma coleta se nenhum run consultado estiver ativo ou tiver sido criado nos últimos 25 minutos. A idade de publicação é diferente da idade de aquisição ou da rodada de cada modelo. Os caches e os limites de consulta dos provedores continuam sob controle do workflow.
 
-## 1. Criar um token de acesso com escopo mínimo
+## Simular
 
-1. GitHub → sua foto → **Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token**.
-2. Nome: `campo-e-clima-dispatch`; validade de até 1 ano (anote a data para renovar).
-3. **Repository access**: *Only select repositories* → `joaolorencone-unesp/campo-e-clima`.
-4. **Permissions → Repository permissions → Contents: Read and write** (é a permissão exigida pelo `repository_dispatch`). Nada mais.
-5. Copie o token uma única vez. Ele nunca entra no repositório nem nesta conversa.
+Em uma máquina com Python e `requests`, a partir da raiz do repositório, rode o comando abaixo. O script lê o diagnóstico público e, quando necessário, consulta o histórico do Actions. A resposta `would_dispatch` indica que a coleta seria solicitada.
 
-## 2. Configurar o agendador (exemplo: cron-job.org, plano gratuito)
+```text
+python -m scripts.dispatch_pages
+```
 
-1. Crie uma conta em https://cron-job.org e um novo cron job.
-2. URL: `https://api.github.com/repos/joaolorencone-unesp/campo-e-clima/dispatches`
-3. Método: **POST**. Corpo (request body): `{"event_type":"collect"}`
-4. Cabeçalhos (headers):
-   - `Accept: application/vnd.github+json`
-   - `Authorization: Bearer <SEU_TOKEN>`
-   - `X-GitHub-Api-Version: 2022-11-28`
-   - `Content-Type: application/json`
-5. Agendamento: a cada 30 minutos nos minutos **15 e 45** (o cron do GitHub já tenta nos minutos 7 e 37; os dois se complementam).
-6. Salve e execute uma vez manualmente: a resposta esperada é **HTTP 204** e, em até um minuto, um novo run com evento `repository_dispatch` aparece em Actions.
+## Ativar após autorização
 
-## 3. Verificar e manter
+1. Em **Settings → Developer settings → Personal access tokens → Fine-grained tokens**, selecione somente `joaolorencone-unesp/campo-e-clima` e conceda **Actions: Read and write**. Escolha uma validade definida e anote a data de renovação. Esse é o escopo exigido pela [API de disparo de workflows](https://docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event).
+2. Configure `CAMPO_PAGES_DISPATCH_TOKEN` como segredo no ambiente do processo agendado. Mantenha o token fora de arquivos do repositório, argumentos de comando e logs. A credencial permite operar os workflows do repositório e deve ficar em uma máquina de confiança.
+3. Configure um único agendador para executar `python -m scripts.dispatch_pages --dispatch` a cada 10 minutos, a partir da raiz do repositório. Em Windows, selecione **Não iniciar uma nova instância** se a anterior ainda estiver em execução. A máquina deve estar ligada para cobrir o período desejado.
+4. Em **Actions → Collect and deploy Campo e Clima**, verifique o evento `workflow_dispatch`. Compare os intervalos entre deploys bem-sucedidos e os horários de aquisição em **Qualidade, fontes & diagnóstico**. Pause a tarefa externa para suspender o piloto.
 
-- Em **Actions → Collect and deploy Campo e Clima**, os runs disparados externamente mostram "repository_dispatch". O painel exibe o evento em Qualidade, fontes & diagnóstico.
-- Se o token expirar, o agendador passa a receber HTTP 401: gere um novo token e atualize o cabeçalho.
-- Para suspender, basta pausar o job no agendador; nada precisa mudar no repositório.
+Se a leitura do painel ou do GitHub falhar, a verificação termina sem POST e pode ser executada novamente no próximo horário. O resultado `dispatch_accepted` confirma a aceitação da solicitação. A publicação é confirmada pelo job `deploy` e pelo JSON público. Disparos do próprio GitHub ainda podem coincidir com a verificação externa. A fila do workflow protege a execução concorrente.
 
-## Limites e cuidados
-
-- O token concede escrita de conteúdo no repositório: guarde-o só no agendador, com conta protegida por senha forte e autenticação em dois fatores.
-- O GitHub pode enfileirar runs simultâneos; o fluxo já usa `concurrency: pages` com fila, então disparos sobrepostos não quebram a publicação.
-- Minutos gratuitos do Actions: contas pessoais em repositório público não são cobradas por minutos de runners hospedados.
+O evento `repository_dispatch` com tipo `collect` permanece disponível para integrações existentes. O script de contingência usa `workflow_dispatch` para trabalhar com uma credencial de Actions.

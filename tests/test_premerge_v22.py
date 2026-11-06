@@ -57,6 +57,38 @@ def test_rate_limit_stops_following_models_and_clients(tmp_path,monkeypatch):
         with pytest.raises(requests.HTTPError):FreeClient(root,session=session).get('https://ensemble-api.open-meteo.com/v1/ensemble',{'models':model})
     assert session.calls==1,'A 429 must stop subsequent model requests for its cooldown'
 
+def test_inmet_cooldown_does_not_block_open_meteo_and_survives_midnight(tmp_path, monkeypatch):
+    from scripts.science import http
+
+    class Session:
+        def __init__(self):
+            self.calls = []
+
+        def get(self, url, **kwargs):
+            self.calls.append(url)
+            response = requests.Response()
+            response.status_code = 429 if 'inmet.gov.br' in url else 200
+            response.headers = {'Retry-After': '3600'}
+            response._content = b'{}'
+            return response
+
+    session = Session()
+    forecast = 'https://api.open-meteo.com/v1/forecast'
+    stations = 'https://apitempo.inmet.gov.br/estacoes/T'
+    alerts = 'https://apiprevmet3.inmet.gov.br/avisos/ativos'
+    monkeypatch.setattr(http.time, 'sleep', lambda _: None)
+    monkeypatch.setattr(http, 'now', lambda: '2026-11-06T23:55:00+00:00')
+    with pytest.raises(requests.HTTPError):
+        FreeClient(tmp_path, session=session).get(stations, {})
+    monkeypatch.setattr(http, 'now', lambda: '2026-11-07T00:05:00+00:00')
+    assert FreeClient(tmp_path, session=session).get(forecast, {}) == {}
+    with pytest.raises(requests.HTTPError, match='inmet.gov.br'):
+        FreeClient(tmp_path, session=session).get(alerts, {})
+    assert session.calls == [stations, forecast]
+    usage = json.loads((tmp_path / 'usage.json').read_text(encoding='utf-8'))
+    assert usage['day'] == '2026-11-07' and usage['http_requests'] == 1
+
+
 def test_corrupt_response_cache_does_not_block_new_acquisition(tmp_path,monkeypatch):
     from scripts.science.common import digest,packed
     url='https://api.open-meteo.com/v1/forecast';params={'latitude':-23.065};root=tmp_path/'cache';root.mkdir()

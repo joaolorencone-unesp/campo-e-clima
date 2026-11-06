@@ -38,5 +38,18 @@ vm.createContext(ctx);
  assert.equal(requests,1);
  payload.utc_offset_seconds=0;
  await assert.rejects(()=>f(),/Fuso horário/);
+ const refreshEnd=source.indexOf("$('tabs').addEventListener",end);
+ assert(refreshEnd>end);
+ const nodes={refresh:{},status:{}};
+ let rendered=false;
+ const publication={issued_at_utc:'2026-11-06T14:58:00Z',deterministic:null,rain_ensemble_daily:[{date:'2026-11-07',p50_mm:0}]};
+ const refreshCtx=vm.createContext({
+  DATA_URL:'data/latest.json',$:id=>nodes[id],window:{},activeTZ:()=> 'America/Campo_Grande',
+  fetchWithTimeout:async()=>publication,render:()=>{rendered=true;},setRefreshFeedback:()=>{},console:{warn:()=>{}}
+ });
+ const refresh=vm.runInContext('let state=null;'+source.slice(end,refreshEnd)+'\nrefresh',refreshCtx);
+ await refresh(false);
+ assert.equal(rendered,true,'a cold visit must render a valid ensemble publication without deterministic data');
+ assert.equal(vm.runInContext('state.deterministic',refreshCtx),null);
  console.log('PASS: consulta determinística direta, atualização real e validação de fuso.');
 })().catch(e=>{console.error(e);process.exit(1)});

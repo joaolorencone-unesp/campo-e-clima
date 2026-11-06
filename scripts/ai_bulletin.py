@@ -71,10 +71,15 @@ def build_facts(public: dict, *, now: dt.datetime | None = None) -> dict:
     times = hourly.get('time') or []
     local_now = now + dt.timedelta(seconds=int(offset))
     future = [i for i, t in enumerate(times) if t[:16] > local_now.strftime('%Y-%m-%dT%H:%M')]
+    rain_window = None
     if future:
         rain24 = [hourly.get('precipitation', [None] * len(times))[i] for i in future[:24]]
         if len(rain24) == 24 and all(_finite(x) for x in rain24):
-            add(f'Chuva determinística prevista nas próximas 24 h: {_num(sum(rain24))} mm.', sum(rain24))
+            ends = [dt.datetime.fromisoformat(times[i][:16]) for i in future[:24]]
+            hour = dt.timedelta(hours=1)
+            if all(b - a == hour for a, b in zip(ends, ends[1:])):
+                rain_window = {'start': (ends[0] - hour).isoformat(timespec='minutes'), 'end': ends[-1].isoformat(timespec='minutes')}
+                add(f'Chuva determinística prevista nas próximas 24 h: {_num(sum(rain24))} mm.', sum(rain24))
         temps = [hourly.get('temperature_2m', [None] * len(times))[i] for i in future[:24]]
         temps = [x for x in temps if _finite(x)]
         if temps:
@@ -123,7 +128,7 @@ def build_facts(public: dict, *, now: dt.datetime | None = None) -> dict:
         add(f'Ensembles adquiridos há até {_num(fresh["ensemble_oldest_acquisition_age_min"] / 60, 1)} h; {fresh.get("models_valid_rain")} modelos válidos para chuva.', fresh['ensemble_oldest_acquisition_age_min'] / 60, fresh.get('models_valid_rain'))
     facts.append('Percentuais são frequências de membros dos ensembles, não probabilidades calibradas; este texto não é orientação operacional.')
     sheet = {'location_id': (public.get('site') or {}).get('id'), 'date_local': today, 'facts': facts, 'numbers': sorted(numbers),
-             'issued_at_utc': public.get('issued_at_utc')}
+             'issued_at_utc': public.get('issued_at_utc'), 'rain_24h_window_local': rain_window}
     sheet['sha256'] = hashlib.sha256(json.dumps(sheet, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
     return sheet
 
@@ -280,6 +285,7 @@ def generate(public: dict, *, now: dt.datetime | None = None, provider: str | No
     provider = (provider if provider is not None else os.environ.get('AI_BULLETIN_PROVIDER', 'none')).strip().lower()
     result = {'generated_utc': now.isoformat(timespec='seconds'), 'location_id': sheet['location_id'], 'prompt_version': PROMPT_VERSION,
               'facts': sheet['facts'], 'facts_sha256': sheet['sha256'], 'issued_at_utc': sheet['issued_at_utc'],
+              'rain_24h_window_local': sheet['rain_24h_window_local'],
               'rule_based_text': baseline, 'text': baseline, 'status': 'rules', 'provider': 'none', 'model': 'rules', 'validation': 'n/a', 'error': None,
               'disclaimer': 'Texto gerado automaticamente a partir dos números publicados; confira os valores no painel antes de qualquer decisão.'}
     if provider in ('', 'none'):

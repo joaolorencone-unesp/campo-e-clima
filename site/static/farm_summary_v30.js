@@ -22,6 +22,21 @@
  }
  const val=(h,key,i)=>{const x=h?.[key]?.[i];return finite(x)?x:null;};
  function sumOrNull(values){return values.length&&values.every(finite)?values.reduce((a,b)=>a+b,0):null;}
+ function formatRainWindow(interval){
+  if(typeof interval?.start!=='string'||typeof interval?.end!=='string')return '';
+  const format=stamp=>ddmm(stamp)+' '+stamp.slice(11,16);
+  return `${format(interval.start)} a ${format(interval.end)} (horário local)`;
+ }
+ function rain24Window(state,idx){
+  const hours=idx.slice(0,24), hour=3600000;
+  const ends=hours.map(x=>localMillis(x.t,state));
+  if(ends.length!==24||ends.some((end,i)=>end===null||(i>0&&end-ends[i-1]!==hour)))return null;
+  const total=sumOrNull(hours.map(x=>val(state?.deterministic?.hourly,'precipitation',x.i)));
+  if(total===null)return null;
+  // Precipitation belongs to the hour ending at each timestamp.
+  const start=new Date(ends[0]-hour+offsetSeconds(state)*1000).toISOString().slice(0,16);
+  return {total,start,end:hours[23].t.slice(0,16)};
+ }
  function agreementSentence(row,dayLabel){
   if(!row)return null;
   const occ=row.agreement_label==='alta'?'elevada concordância':row.agreement_label==='media'?'concordância parcial':'baixa concordância';
@@ -31,14 +46,15 @@
  }
  function build(state,now=Date.now()){
   const out={headline:'',cards:[],sentences:[],risks:[],windows:[],freshness:{},notes:[],observed:null,ready:false};
-  if(!state?.deterministic?.hourly){out.headline='Sem previsão carregada para este ponto.';return out;}
-  const h=state.deterministic.hourly,idx=futureHours(state,now,72);
+  const h=state?.deterministic?.hourly;
+  if(!h&&!state?.rain_ensemble_daily?.some(row=>finite(row?.p50_mm))){out.headline='Sem previsão carregada para este ponto.';return out;}
+  const idx=futureHours(state,now,72);
   const today=localDateISO(now,state),tomorrow=localDateISO(now+86400000,state);
   const daily=state.rain_ensemble_daily||[],byDay=new Map(daily.map(r=>[r.date,r]));
   const agreement=new Map((state.rain_model_agreement_daily||[]).map(r=>[r.date,r]));
   const first=idx[0];
   // --- current conditions (model) and nearest observation when recent ---
-  const current=state.deterministic.current||{};
+  const current=state.deterministic?.current||{};
   const obs=state.official?.inmet_hourly_nearby;
   if(obs?.state==='ok'&&Array.isArray(obs.records)&&obs.records.length){
    const last=obs.records[obs.records.length-1],age=ageMinutes(last.valid_at_utc,now);
@@ -51,13 +67,13 @@
   out.cards.push({key:'rain6',label:'Chuva nas próximas 6 h',value:win6?`${pct(win6.p_gt_1_mm)} dos membros`:finite(det6)?fmt(det6)+' mm':'—',
    detail:win6?`>1 mm em 6 h · média ${fmt(win6.mean_mm)} mm · ${win6.models} modelos`:'Somente previsão determinística',tone:win6&&win6.p_gt_1_mm>=.5?'wet':'neutral',note:'Frequência bruta entre membros dos ensembles; não é probabilidade calibrada.'});
   // --- rain 24 h ---
-  const det24=sumOrNull(idx.slice(0,24).map(x=>val(h,'precipitation',x.i)));
+  const rainWindow=rain24Window(state,idx),det24=rainWindow?.total;
   const todayRow=byDay.get(today),tomorrowRow=byDay.get(tomorrow);
   // Before noon most of the next 24 h still belong to today; afterwards tomorrow dominates.
   const localHour=new Date(now+offsetSeconds(state)*1000).getUTCHours();
   const focus=(localHour<12?todayRow:tomorrowRow)||tomorrowRow||todayRow;
   out.cards.push({key:'rain24',label:'Chuva nas próximas 24 h',value:finite(det24)?fmt(det24)+' mm':'—',
-   detail:focus?`${focus.date===tomorrow?'Amanhã':'Hoje'}: mediana ${fmt(focus.p50_mm)} mm, P10–P90 ${fmt(focus.p10_mm)}–${fmt(focus.p90_mm)} mm, ${pct(focus.p_gt_1_mm)} dos membros com >1 mm`:'Ensembles indisponíveis',tone:focus&&focus.p_gt_1_mm>=.6?'wet':finite(det24)&&det24>=10?'wet':'neutral',note:'Valor determinístico somado hora a hora; distribuição dos ensembles ao lado.'});
+   detail:focus?`${focus.date===tomorrow?'Amanhã':'Hoje'}: mediana ${fmt(focus.p50_mm)} mm, P10–P90 ${fmt(focus.p10_mm)}–${fmt(focus.p90_mm)} mm, ${pct(focus.p_gt_1_mm)} dos membros com >1 mm`:'Ensembles indisponíveis',tone:focus&&focus.p_gt_1_mm>=.6?'wet':finite(det24)&&det24>=10?'wet':'neutral',note:rainWindow?`Previsão determinística de ${formatRainWindow(rainWindow)}. A mediana se refere ao dia indicado.`:'Acumulado determinístico indisponível para esta janela.'});
   // --- 7 days ---
   const acc=(state.rain_ensemble_accumulated||[]);const span=acc.find(a=>a.span_days===7)||acc.find(a=>a.span_days===5)||acc[0];
   out.cards.push({key:'rain7',label:span?`Chuva em ${span.span_days} dias`:'Chuva na semana',value:span?`${fmt(span.p50_mm,0)} mm`:'—',
@@ -70,7 +86,7 @@
   // --- wind ---
   const winds=idx.slice(0,24).map(x=>val(h,'wind_speed_10m',x.i)).filter(finite),gusts=idx.slice(0,24).map(x=>val(h,'wind_gusts_10m',x.i)).filter(finite);
   const gustDay=(state.gust_ensemble_daily||[]).find(g=>g.date===today)||(state.gust_ensemble_daily||[])[0];
-  out.cards.push({key:'wind',label:'Vento e rajadas (24 h)',value:winds.length?`${fmt(Math.min(...winds),0)}–${fmt(Math.max(...winds),0)} km/h`:'—',detail:`${gusts.length?'rajadas até '+fmt(Math.max(...gusts),0)+' km/h':'sem rajadas'}${gustDay?` · ${pct(gustDay.p_gt_30_kmh)} dos membros com rajada >30 km/h (${gustDay.model_count} modelos)`:''}`,tone:gusts.length&&Math.max(...gusts)>40?'windy':'neutral'});
+  out.cards.push({key:'wind',label:'Vento e rajadas (24 h)',value:winds.length?`${fmt(Math.min(...winds),0)}–${fmt(Math.max(...winds),0)} km/h`:'—',detail:`${gusts.length?'rajadas até '+fmt(Math.max(...gusts),0)+' km/h':'Rajadas determinísticas indisponíveis'}${gustDay?` · ${pct(gustDay.p_gt_30_kmh)} dos membros com rajada >30 km/h (${gustDay.model_count} modelos)`:''}`,tone:gusts.length&&Math.max(...gusts)>40?'windy':'neutral'});
   // --- risks ---
   for(const row of daily.filter(r=>r.date>=today).slice(0,5)){
    if(finite(row.p_gt_20_mm)&&row.p_gt_20_mm>=.3)out.risks.push({kind:'heavy_rain',text:`Chuva forte possível em ${ddmm(row.date)}: ${pct(row.p_gt_20_mm)} dos membros acima de 20 mm/dia.`});
@@ -94,10 +110,10 @@
   // --- freshness ---
   const models=Object.values(state.ensemble_models||{}).filter(m=>m.state==='ok'&&(m.precipitation_members||0)>0);
   const ages=models.map(m=>ageMinutes(m.collected_at_utc,now)).filter(finite);
-  const detAge=ageMinutes(state.deterministic.collected_at_utc||state._liveForecastAt,now);
+  const detAge=ageMinutes(state.deterministic?.collected_at_utc||state._liveForecastAt,now);
   out.freshness={models_valid:models.length,models_total:Object.keys(state.ensemble_models||{}).length,ensemble_oldest_age_min:ages.length?Math.max(...ages):null,deterministic_age_min:detAge,
    pending:state.freshness?.models_with_newer_run_pending||[],issued_at_utc:state.issued_at_utc};
-  out.sentences.push(`Dados: previsão horária obtida ${humanAge(detAge)}; ensembles de ${models.length}${out.freshness.models_total?'/'+out.freshness.models_total:''} modelos, o mais antigo adquirido ${humanAge(out.freshness.ensemble_oldest_age_min)}.${out.freshness.pending.length?' Há rodada mais nova anunciada para: '+out.freshness.pending.join(', ')+'.':''}`);
+  out.sentences.push(`Dados: ${h?'previsão horária obtida '+humanAge(detAge):'previsão horária determinística indisponível'}; ensembles de ${models.length}${out.freshness.models_total?'/'+out.freshness.models_total:''} modelos, o mais antigo adquirido ${humanAge(out.freshness.ensemble_oldest_age_min)}.${out.freshness.pending.length?' Há rodada mais nova anunciada para: '+out.freshness.pending.join(', ')+'.':''}`);
   if(out.observed)out.sentences.push(`Observado na estação ${out.observed.station} (${fmt(out.observed.distance_km,0)} km) ${humanAge(out.observed.age_min)}: ${fmt(out.observed.temperature_c)} °C, UR ${fmt(out.observed.rh_pct,0)}%, chuva na última hora ${fmt(out.observed.rain_mm)} mm. Não representa a fazenda.`);
   // --- lower-restriction periods (generic field work screening, next 48 h) ---
   const candidates=[];
@@ -114,7 +130,7 @@
   out.notes.push('Períodos de menor restrição: sem chuva prevista na hora e nas 3 seguintes, vento 3–15 km/h, rajadas ≤25 km/h, 6h–19h. Triagem genérica para planejamento; não substitui a avaliação da operação específica, a bula e a medição no talhão.');
   // headline
   const wet=focus&&finite(focus.p_gt_1_mm)?focus.p_gt_1_mm:null;
-  if(finite(det24)&&wet!==null)out.headline=wet>=.7?'Chuva provável nas próximas 24 h.':wet>=.4?'Chuva possível nas próximas 24 h; modelos divididos.':'Pouca chuva esperada nas próximas 24 h.';
+  if(wet!==null){const day=focus.date===tomorrow?'amanhã':'hoje';out.headline=wet>=.7?`Chuva provável ${day}.`:wet>=.4?`Chuva possível ${day}, com modelos divididos.`:`Pouca chuva esperada ${day}.`;}
   else if(finite(det24))out.headline=det24>=5?'Chuva prevista nas próximas 24 h (previsão determinística).':'Pouca chuva prevista nas próximas 24 h (previsão determinística).';
   else out.headline='Previsão horária incompleta para as próximas 24 h.';
   out.ready=true;
@@ -130,9 +146,9 @@
   <div class="farm-grid">
    <section class="farm-block"><h3>Riscos a observar</h3><ul class="risk-list">${s.risks.map(r=>`<li class="risk-${esc(r.kind)}">${esc(r.text)}</li>`).join('')}</ul></section>
    <section class="farm-block"><h3>Concordância entre modelos e idade dos dados</h3>${s.sentences.map(t=>`<p>${esc(t)}</p>`).join('')}</section>
-   <section class="farm-block"><h3>Próximos períodos com menor restrição meteorológica (48 h)</h3>${s.windows.length?`<ul class="window-list">${s.windows.map(w=>`<li><strong>${esc(w.start.slice(8,10))}/${esc(w.start.slice(5,7))} ${esc(w.start.slice(11,16))}–${esc(w.end.slice(11,16))}</strong> · ${w.hours} horas consecutivas</li>`).join('')}</ul>`:'<p>Nenhum período de 2 h ou mais passou pela triagem genérica nas próximas 48 h.</p>'}<small>${esc(s.notes[0]||'')}</small></section>
+   <section class="farm-block"><h3>Próximos períodos com menor restrição meteorológica (48 h)</h3>${s.windows.length?`<ul class="window-list">${s.windows.map(w=>`<li><strong>${esc(w.start.slice(8,10))}/${esc(w.start.slice(5,7))} ${esc(w.start.slice(11,16))}–${esc(w.end.slice(11,16))}</strong> · ${w.hours} horas consecutivas</li>`).join('')}</ul>`:state?.deterministic?.hourly?'<p>Nenhum período de 2 h ou mais passou pela triagem genérica nas próximas 48 h.</p>':'<p>Triagem indisponível sem previsão horária determinística.</p>'}<small>${esc(s.notes[0]||'')}</small></section>
   </div>`;
  }
- root.CampoSummary={build,render,_test:{agreementSentence,futureHours,localMillis}};
+ root.CampoSummary={build,render,rain24Window,formatRainWindow,_test:{agreementSentence,futureHours,localMillis}};
  if(typeof module==='object'&&module.exports)module.exports=root.CampoSummary;
 })(typeof window!=='undefined'?window:globalThis);
