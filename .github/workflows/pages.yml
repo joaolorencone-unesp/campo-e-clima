@@ -1,8 +1,8 @@
 name: Collect and deploy Campo e Clima
 on:
   workflow_dispatch:
-  # External free scheduler (e.g. cron-job.org) can POST a repository_dispatch to compensate
-  # the GitHub cron, which executes only a fraction of the half-hourly slots. See docs/OPERACAO_GATILHO_EXTERNO.md.
+  # Legacy external integrations use repository_dispatch. The guarded fallback uses
+  # workflow_dispatch above. See docs/OPERACAO_GATILHO_EXTERNO.md.
   repository_dispatch:
     types: [collect]
   schedule:
